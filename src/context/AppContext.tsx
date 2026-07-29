@@ -1,5 +1,8 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { supabase } from "./supabase"; // 🔌 ดึงตัวเชื่อมต่อจากไฟล์ supabase.ts ที่เราสร้างไว้
+
+// 🌐 แยก Base URL ของ Server ออกจาก Endpoint สินค้า
+const SERVER_URL = "http://119.59.102.161:3038";
+const API_BASE_URL = `${SERVER_URL}/api/products`;
 
 export type Product = {
   id: string;
@@ -28,8 +31,9 @@ type AppContextType = {
   logout: () => void;
   register: (username: string, email: string, password: string, role?: string) => boolean;
   products: Product[];
-  addProduct: (product: Omit<Product, "id">) => Promise<void>; // ✨ ปรับให้เป็น Async
-  deleteProduct: (id: string) => Promise<void>; // ✨ ปรับให้เป็น Async
+  addProduct: (product: Omit<Product, "id">) => Promise<void>;
+  updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   cart: CartItem[];
   addToCart: (productId: string) => void;
   removeFromCart: (productId: string) => void;
@@ -40,33 +44,30 @@ type AppContextType = {
   receipts: Receipt[];
   favorites: string[];
   toggleFavorite: (productId: string) => void;
-  fetchProducts: () => Promise<void>; // 🌐 เพิ่มฟังก์ชันสำหรับดึงข้อมูลใหม่
+  fetchProducts: () => Promise<void>;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
 const MOCK_USERS = [{ username: "admin", password: "1234", email: "admin@plugtech.com", role: "admin" as Role }];
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [products, setProducts] = useState<Product[]>([]); // ✨ เริ่มต้นเป็นอาเรย์ว่างเพื่อรอโหลดจาก Supabase
+  const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState(MOCK_USERS);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
 
-  // 🌐 1. ฟังก์ชันดึงข้อมูลสินค้าทั้งหมดมาจาก Supabase
+  // 🌐 1. ดึงข้อมูลสินค้าจาก Express Backend บน Cloud
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false }); // สินค้าใหม่ล่าสุดขึ้นก่อน
-
-      if (error) throw error;
+      const response = await fetch(API_BASE_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
 
       if (data) {
-        // แปลงค่า id ใน db ให้เป็น string เสมอเพื่อให้สอดคล้องกับประเภทข้อมูลในแอปของหนู
         const formattedProducts: Product[] = data.map((p: any) => ({
           id: String(p.id),
           name: p.name,
@@ -80,11 +81,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setProducts(formattedProducts);
       }
     } catch (err) {
-      console.error("Error fetching products from Supabase:", err);
+      console.error("Error fetching products from Backend API:", err);
     }
   };
 
-  // 🔄 เรียกดึงข้อมูลสินค้าจริงทันทีที่เปิดแอปพลิเคชัน
+  // 🔄 เรียกดึงข้อมูลเมื่อเปิดแอป
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -105,43 +106,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = () => { setUser(null); setCart([]); };
 
-  // ➕ 2. ปรับปรุงฟังก์ชันเพิ่มสินค้าให้บันทึกลงฐานข้อมูล Supabase จริงๆ
+  // ➕ 2. เพิ่มสินค้าผ่าน POST Request (แก้ไขแล้ว ✨)
   const addProduct = async (product: Omit<Product, "id">) => {
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .insert([product])
-        .select(); // ดึงข้อมูลแถวที่เพิ่มสำเร็จกลับมาด้วยเพื่อเอา id จริง
+      console.log("Sending POST request to add product:", product);
 
-      if (error) throw error;
+      const response = await fetch(API_BASE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(product),
+      });
 
-      if (data && data[0]) {
-        const newProduct: Product = {
-          ...product,
-          id: String(data[0].id),
-        };
-        setProducts((prev) => [newProduct, ...prev]);
+      if (!response.ok) {
+        const errorRes = await response.json().catch(() => ({}));
+        throw new Error(errorRes.error || `Failed to add product (${response.status})`);
       }
+
+      // โหลดข้อมูลล่าสุดจาก DB อีกครั้ง
+      await fetchProducts();
     } catch (err) {
-      console.error("Error adding product to Supabase:", err);
+      console.error("Error adding product via Backend API:", err);
+      throw err; 
     }
   };
 
-  // 🔴 3. ปรับปรุงฟังก์ชันลบสินค้าให้ลบออกจาก Supabase จริงๆ
+  // ✏️ 3. แก้ไขสินค้าผ่าน PUT Request (แก้ไขแล้ว ✨)
+  const updateProduct = async (id: string, productData: Partial<Product>) => {
+    try {
+      console.log(`Sending PUT request to: ${API_BASE_URL}/${id}`);
+      
+      const response = await fetch(`${API_BASE_URL}/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(productData),
+      });
+
+      if (!response.ok) {
+        const errorRes = await response.json().catch(() => ({}));
+        throw new Error(errorRes.error || `Failed to update product (${response.status})`);
+      }
+
+      await fetchProducts();
+    } catch (err) {
+      console.error("Error updating product via Backend API:", err);
+      throw err;
+    }
+  };
+
+  // 🔴 4. ลบสินค้าผ่าน DELETE Request
   const deleteProduct = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", id);
+      console.log(`Sending DELETE request to: ${API_BASE_URL}/${id}`);
 
-      if (error) throw error;
+      const response = await fetch(`${API_BASE_URL}/${id}`, {
+        method: "DELETE",
+      });
 
-      // เมื่อบน Cloud ลบสำเร็จ ให้เคลียร์ข้อมูลหน้าจอตาม
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      setCart((prev) => prev.filter((c) => c.productId !== id));
+      if (!response.ok) {
+        const errorRes = await response.json().catch(() => ({}));
+        throw new Error(errorRes.error || `Failed to delete product (${response.status})`);
+      }
+
+      setProducts((prev) => prev.filter((p) => String(p.id) !== String(id)));
+      setCart((prev) => prev.filter((c) => String(c.productId) !== String(id)));
     } catch (err) {
-      console.error("Error deleting product from Supabase:", err);
+      console.error("Error deleting product via Backend API:", err);
+      throw err;
     }
   };
 
@@ -189,7 +219,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         user, login, logout, register,
-        products, addProduct, deleteProduct,
+        products, addProduct, updateProduct, deleteProduct,
         cart, addToCart, removeFromCart, updateQuantity, cartTotal, cartCount, checkout, receipts,
         favorites, toggleFavorite, fetchProducts,
       }}
