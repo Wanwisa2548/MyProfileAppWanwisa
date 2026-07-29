@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
+<<<<<<< HEAD
 // 🌐 URL ของ Supabase
+=======
+// 🌐 URL ของ Supabase ของหนู 
+>>>>>>> 92472607041e085177f0a804646ad8bff2761ba0
 const SUPABASE_URL = 'https://yrtwfhbdrqtuiirvizne.supabase.co'; 
 
 // 🔑 เอากุญแจที่ขึ้นต้นด้วย ey
