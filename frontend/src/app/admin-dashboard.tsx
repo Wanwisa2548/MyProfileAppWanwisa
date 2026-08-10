@@ -36,7 +36,6 @@ export default function AdminDashboard() {
   ];
 
   return (
-    // คืนค่ามาตรฐานให้ SafeAreaView ปล่อยให้ Layout ส่วนกลางเป็นตัวดูแลพื้นที่ด้านล่าง
     <SafeAreaView style={styles.container}>
       {/* Clean Light Header */}
       <View style={styles.header}>

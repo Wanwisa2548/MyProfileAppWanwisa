@@ -13,13 +13,13 @@ function TabsNav() {
         
         // 🌟 เปิดใช้งาน Label ระบบ และตั้งค่าให้มันใจว่าจะขึ้นแน่นอน
         tabBarShowLabel: true, 
-        tabBarLabelPosition: "below-icon", // บังคับให้ชื่ออยู่ใต้ไอคอนเสมอ
+        tabBarLabelPosition: "below-icon",
         
         tabBarActiveTintColor: "#00A3E0",   
         tabBarInactiveTintColor: "#64748b", 
         tabBarStyle: styles.floatingTabBar,
         tabBarLabelStyle: styles.globalTabBarLabel,
-        tabBarItemStyle: styles.tabItemLayout, // จัดระยะช่องไฟปุ่ม
+        tabBarItemStyle: styles.tabItemLayout,
       }}
     >
       {/* 1. Home */}

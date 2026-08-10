@@ -57,7 +57,6 @@ export default function AddProduct() {
       const parsedPrice = Number(price);
       const parsedOldPrice = oldPrice.trim() ? Number(oldPrice) : null;
 
-      // Call addProduct (Async/Await)
       await addProduct({ 
         name: name.trim(), 
         brand: brand.trim(), 
