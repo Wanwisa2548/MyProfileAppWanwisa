@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { useApp } from "../context/AppContext";
 
-// 🔌 หมวดหมู่เฉพาะเรื่องปลั๊กไฟและอุปกรณ์ไฟฟ้า
 const CATEGORIES = ["Power Strips", "Smart Plugs", "Adapters"];
 
 export default function AddProduct() {
@@ -26,9 +25,8 @@ export default function AddProduct() {
   const [oldPrice, setOldPrice] = useState("");
   const [image, setImage] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
-  const [loading, setLoading] = useState(false); // ⏳ สถานะกำลังบันทึกข้อมูล
+  const [loading, setLoading] = useState(false);
 
-  // 🔐 ตรวจสอบสิทธิ์ Admin
   if (!user || user.role !== "admin") {
     return (
       <SafeAreaView style={styles.center}>
@@ -47,7 +45,6 @@ export default function AddProduct() {
     );
   }
 
-  // 🚀 ส่งข้อมูลไปยัง Cloud API
   const handleSubmit = async () => {
     if (!name.trim() || !brand.trim() || !price.trim() || !image.trim()) {
       Alert.alert("Incomplete information", "Please fill in the plug name, brand, price, and image link.");
@@ -55,7 +52,7 @@ export default function AddProduct() {
     }
 
     try {
-      setLoading(true); // เปิดตัวหมุนรอ
+      setLoading(true);
 
       const parsedPrice = Number(price);
       const parsedOldPrice = oldPrice.trim() ? Number(oldPrice) : null;
@@ -66,8 +63,6 @@ export default function AddProduct() {
         brand: brand.trim(), 
         price: parsedPrice, 
         oldPrice: parsedOldPrice,
-        // ✨ ส่งแบบ snake_case เผื่อไว้กรณี Supabase ใช้ชื่อคอลัมน์ old_price
-        ...(parsedOldPrice !== null && { old_price: parsedOldPrice }), 
         rating: 5.0, 
         category, 
         image: image.trim() 
@@ -78,17 +73,15 @@ export default function AddProduct() {
         "Power plug device information has been successfully added to Cloud server.", 
         [{ 
           text: "Agree", 
-          // ✨ เปลี่ยนเป็น replace เพื่อไม่ให้กด Back กลับมาหน้าเพิ่มได้อีก
           onPress: () => router.replace("/") 
         }]
       );
 
-      // เคลียร์ค่าใน ฟอร์ม
       setName(""); setBrand(""); setPrice(""); setOldPrice(""); setImage("");
     } catch (error) {
       Alert.alert("Error", "Failed to add product. Please check your connection.");
     } finally {
-      setLoading(false); // ปิดตัวหมุนรอ
+      setLoading(false);
     }
   };
 
@@ -158,7 +151,6 @@ export default function AddProduct() {
           placeholderTextColor="#94a3b8" 
         />
         
-        {/* ปุ่มบันทึก พร้อมแสดงสถานะ Loading */}
         <TouchableOpacity 
           style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
           onPress={handleSubmit}

@@ -1,8 +1,13 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
-// 🌐 แยก Base URL ของ Server ออกจาก Endpoint สินค้า
-const SERVER_URL = "http://119.59.102.161:3038";
-const API_BASE_URL = `${SERVER_URL}/api/products`;
+// 🌐 ใช้ค่า API Base URL จาก environment ของ Expo ถ้ามี
+const DEFAULT_API_BASE_URL = "http://localhost:3038/api/products";
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
+const API_BASE_URL = configuredApiBaseUrl && configuredApiBaseUrl.length > 0
+  ? configuredApiBaseUrl.endsWith("/api/products")
+    ? configuredApiBaseUrl
+    : `${configuredApiBaseUrl}/api/products`
+  : DEFAULT_API_BASE_URL;
 
 export type Product = {
   id: string;
@@ -16,8 +21,18 @@ export type Product = {
 };
 
 export type Role = "admin" | "user";
-export type User = { username: string; email: string; role: Role };
-export type CartItem = { productId: string; quantity: number };
+
+export type User = {
+  username: string;
+  email: string;
+  role: Role;
+};
+
+export type CartItem = {
+  productId: string;
+  quantity: number;
+};
+
 export type Receipt = {
   id: string;
   date: string;
@@ -48,7 +63,10 @@ type AppContextType = {
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-const MOCK_USERS = [{ username: "admin", password: "1234", email: "admin@plugtech.com", role: "admin" as Role }];
+
+const MOCK_USERS = [
+  { username: "admin", password: "1234", email: "admin@plugtech.com", role: "admin" as Role }
+];
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -65,21 +83,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const data = await response.json();
+      const rawData = await response.json();
+      
+      // รองรับทั้งแบบ Array ตรงๆ และแบบ { data: [...] }
+      const items = Array.isArray(rawData) ? rawData : (rawData?.data || []);
 
-      if (data) {
-        const formattedProducts: Product[] = data.map((p: any) => ({
-          id: String(p.id),
-          name: p.name,
-          brand: p.brand,
-          price: Number(p.price),
-          oldPrice: p.oldPrice ? Number(p.oldPrice) : null,
-          rating: p.rating ? Number(p.rating) : 0,
-          category: p.category,
-          image: p.image,
-        }));
-        setProducts(formattedProducts);
-      }
+      const formattedProducts: Product[] = items.map((p: Record<string, unknown>) => ({
+        id: String(p.id ?? ""),
+        name: String(p.name ?? ""),
+        brand: String(p.brand ?? ""),
+        price: Number(p.price ?? 0),
+        oldPrice: p.oldPrice !== null && p.oldPrice !== undefined ? Number(p.oldPrice) : null,
+        rating: p.rating !== null && p.rating !== undefined ? Number(p.rating) : 5,
+        category: String(p.category ?? "General"),
+        image: String(p.image ?? ""),
+      }));
+
+      setProducts(formattedProducts);
     } catch (err) {
       console.error("Error fetching products from Backend API:", err);
     }
@@ -91,30 +111,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (username: string, password: string) => {
-    const found = users.find((u) => u.username === username && u.password === password);
-    if (found) { setUser({ username: found.username, email: found.email, role: found.role }); return true; }
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+    const found = users.find((u) => u.username === cleanUser && u.password === cleanPass);
+    if (found) {
+      setUser({ username: found.username, email: found.email, role: found.role });
+      return true;
+    }
     return false;
   };
 
   const register = (username: string, email: string, password: string, role: string = "user") => {
-    if (users.some((u) => u.username === username)) return false;
+    const cleanUser = username.trim();
+    if (users.some((u) => u.username === cleanUser)) return false;
+
     const assignedRole: Role = role === "admin" ? "admin" : "user";
-    setUsers((prev) => [...prev, { username, email, password, role: assignedRole }]);
-    setUser({ username, email, role: assignedRole });
+    const newUser = { username: cleanUser, email: email.trim(), password: password.trim(), role: assignedRole };
+    
+    setUsers((prev) => [...prev, newUser]);
+    setUser({ username: cleanUser, email: email.trim(), role: assignedRole });
     return true;
   };
 
-  const logout = () => { setUser(null); setCart([]); };
+  const logout = () => {
+    setUser(null);
+    setCart([]);
+  };
 
-  // ➕ 2. เพิ่มสินค้าผ่าน POST Request (แก้ไขแล้ว ✨)
+  // ➕ 2. เพิ่มสินค้าผ่าน POST Request
   const addProduct = async (product: Omit<Product, "id">) => {
     try {
-      console.log("Sending POST request to add product:", product);
+      const payload = {
+        ...product,
+        price: Number(product.price),
+        oldPrice: product.oldPrice ? Number(product.oldPrice) : null,
+        rating: Number(product.rating || 5),
+      };
+
+      console.log("Sending POST request to add product:", payload);
 
       const response = await fetch(API_BASE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(product),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -126,19 +165,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await fetchProducts();
     } catch (err) {
       console.error("Error adding product via Backend API:", err);
-      throw err; 
+      throw err;
     }
   };
 
-  // ✏️ 3. แก้ไขสินค้าผ่าน PUT Request (แก้ไขแล้ว ✨)
+  // ✏️ 3. แก้ไขสินค้าผ่าน PUT Request
   const updateProduct = async (id: string, productData: Partial<Product>) => {
     try {
+      const payload = {
+        ...productData,
+        ...(productData.price !== undefined && { price: Number(productData.price) }),
+        ...(productData.oldPrice !== undefined && { 
+          oldPrice: productData.oldPrice ? Number(productData.oldPrice) : null 
+        }),
+        ...(productData.rating !== undefined && { rating: Number(productData.rating) }),
+      };
+
       console.log(`Sending PUT request to: ${API_BASE_URL}/${id}`);
-      
+
       const response = await fetch(`${API_BASE_URL}/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(productData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -156,9 +204,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 🔴 4. ลบสินค้าผ่าน DELETE Request
   const deleteProduct = async (id: string) => {
     try {
-      console.log(`Sending DELETE request to: ${API_BASE_URL}/${id}`);
+      const targetId = String(id);
+      console.log(`Sending DELETE request to: ${API_BASE_URL}/${targetId}`);
 
-      const response = await fetch(`${API_BASE_URL}/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/${targetId}`, {
         method: "DELETE",
       });
 
@@ -167,8 +216,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(errorRes.error || `Failed to delete product (${response.status})`);
       }
 
-      setProducts((prev) => prev.filter((p) => String(p.id) !== String(id)));
-      setCart((prev) => prev.filter((c) => String(c.productId) !== String(id)));
+      setProducts((prev) => prev.filter((p) => String(p.id) !== targetId));
+      setCart((prev) => prev.filter((c) => String(c.productId) !== targetId));
     } catch (err) {
       console.error("Error deleting product via Backend API:", err);
       throw err;
@@ -176,52 +225,95 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addToCart = (productId: string) => {
+    const idStr = String(productId);
     setCart((prev) => {
-      const existing = prev.find((c) => c.productId === productId);
-      if (existing) return prev.map((c) => (c.productId === productId ? { ...c, quantity: c.quantity + 1 } : c));
-      return [...prev, { productId, quantity: 1 }];
+      const existing = prev.find((c) => String(c.productId) === idStr);
+      if (existing) {
+        return prev.map((c) =>
+          String(c.productId) === idStr ? { ...c, quantity: c.quantity + 1 } : c
+        );
+      }
+      return [...prev, { productId: idStr, quantity: 1 }];
     });
   };
 
   const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((c) => c.productId !== productId));
+    const idStr = String(productId);
+    setCart((prev) => prev.filter((c) => String(c.productId) !== idStr));
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) { removeFromCart(productId); return; }
-    setCart((prev) => prev.map((c) => (c.productId === productId ? { ...c, quantity } : c)));
+    const idStr = String(productId);
+    if (quantity <= 0) {
+      removeFromCart(idStr);
+      return;
+    }
+    setCart((prev) =>
+      prev.map((c) => (String(c.productId) === idStr ? { ...c, quantity } : c))
+    );
   };
 
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
+
   const cartTotal = cart.reduce((sum, c) => {
-    const p = products.find((p) => p.id === c.productId);
+    const p = products.find((p) => String(p.id) === String(c.productId));
     return sum + (p ? p.price * c.quantity : 0);
   }, 0);
 
   const checkout = (): Receipt | null => {
     if (cart.length === 0) return null;
+
     const items = cart.map((c) => {
-      const p = products.find((p) => p.id === c.productId);
-      return { name: p?.name ?? "สินค้าไม่ทราบชื่อ", price: p?.price ?? 0, quantity: c.quantity };
+      const p = products.find((p) => String(p.id) === String(c.productId));
+      return {
+        name: p?.name ?? "สินค้าไม่ทราบชื่อ",
+        price: p?.price ?? 0,
+        quantity: c.quantity,
+      };
     });
+
     const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const receipt: Receipt = { id: Date.now().toString(), date: new Date().toLocaleString("th-TH"), items, total };
+    const receipt: Receipt = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleString("th-TH"),
+      items,
+      total,
+    };
+
     setReceipts((prev) => [receipt, ...prev]);
     setCart([]);
     return receipt;
   };
 
   const toggleFavorite = (productId: string) => {
-    setFavorites((prev) => (prev.includes(productId) ? prev.filter((f) => f !== productId) : [...prev, productId]));
+    const idStr = String(productId);
+    setFavorites((prev) =>
+      prev.includes(idStr) ? prev.filter((f) => f !== idStr) : [...prev, idStr]
+    );
   };
 
   return (
     <AppContext.Provider
       value={{
-        user, login, logout, register,
-        products, addProduct, updateProduct, deleteProduct,
-        cart, addToCart, removeFromCart, updateQuantity, cartTotal, cartCount, checkout, receipts,
-        favorites, toggleFavorite, fetchProducts,
+        user,
+        login,
+        logout,
+        register,
+        products,
+        addProduct,
+        updateProduct,
+        deleteProduct,
+        cart,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        cartTotal,
+        cartCount,
+        checkout,
+        receipts,
+        favorites,
+        toggleFavorite,
+        fetchProducts,
       }}
     >
       {children}
@@ -231,6 +323,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be used within AppProvider");
+  if (!ctx) {
+    throw new Error("useApp must be used within AppProvider");
+  }
   return ctx;
 }

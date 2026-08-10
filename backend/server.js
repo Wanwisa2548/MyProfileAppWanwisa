@@ -4,14 +4,14 @@ const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-const PORT = process.env.PORT || 3038; 
+const PORT = Number(process.env.PORT) || 3038;
 
-app.use(cors());
+app.use(cors({ origin: true }));
 app.use(express.json());
 
-// 🔌 ตั้งค่าการเชื่อมต่อ Supabase
-const SUPABASE_URL = 'https://yrtwfhbdrqtuiirvizne.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydHdmaGJkcnF0dWlpcnZpem5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3ODExNDcsImV4cCI6MjA5OTM1NzE0N30.kbEWEIpztsjCwIyS2qpgbighYyGqL-W2KSKsObzlKT4'; 
+// 🔌 ตั้งค่าการเชื่อมต่อ Supabase จาก environment
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://yrtwfhbdrqtuiirvizne.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydHdmaGJkcnF0dWlpcnZpem5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3ODExNDcsImV4cCI6MjA5OTM1NzE0N30.kbEWEIpztsjCwIyS2qpgbighYyGqL-W2KSKsObzlKT4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // 1. หน้าแรกทดสอบ Server
@@ -37,12 +37,12 @@ app.get('/api/products', async (req, res) => {
 // 3. [POST] เพิ่มสินค้าใหม่
 app.post('/api/products', async (req, res) => {
   try {
-    const { id, created_at, price, oldPrice, rating, ...rest } = req.body;
+    const { id, created_at, price, oldPrice, old_price, rating, ...rest } = req.body;
 
     const newProduct = {
       ...rest,
       price: Number(price) || 0,
-      oldPrice: oldPrice ? Number(oldPrice) : null,
+      oldPrice: oldPrice ?? old_price ? Number(oldPrice ?? old_price) : null,
       rating: rating ? Number(rating) : 5,
     };
 
@@ -64,12 +64,12 @@ app.put('/api/products/:id', async (req, res) => {
     const { id } = req.params;
     const numericId = Number(id); // แปลง ID เป็น Number
 
-    const { id: bodyId, created_at, price, oldPrice, rating, ...updateData } = req.body;
+    const { id: bodyId, created_at, price, oldPrice, old_price, rating, ...updateData } = req.body;
 
     const payload = {
       ...updateData,
       ...(price !== undefined && { price: Number(price) }),
-      ...(oldPrice !== undefined && { oldPrice: oldPrice ? Number(oldPrice) : null }),
+      ...((oldPrice !== undefined || old_price !== undefined) && { oldPrice: (oldPrice ?? old_price) ? Number(oldPrice ?? old_price) : null }),
       ...(rating !== undefined && { rating: Number(rating) }),
     };
 
