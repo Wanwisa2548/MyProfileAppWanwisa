@@ -15,8 +15,8 @@ function TabsNav() {
         tabBarShowLabel: true, 
         tabBarLabelPosition: "below-icon",
         
-        tabBarActiveTintColor: "#00A3E0",   
-        tabBarInactiveTintColor: "#64748b", 
+        tabBarActiveTintColor: "#2563EB",
+        tabBarInactiveTintColor: "#5B6B85", 
         tabBarStyle: styles.floatingTabBar,
         tabBarLabelStyle: styles.globalTabBarLabel,
         tabBarItemStyle: styles.tabItemLayout,
@@ -128,11 +128,11 @@ const styles = StyleSheet.create({
     borderRadius: 32,          
     borderTopWidth: 0,
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+    borderColor: "#EAF1FB",
     paddingTop: 8, // ดันไอคอนลงมาจากขอบบนเล็กน้อย
     paddingBottom: Platform.OS === "ios" ? 12 : 8,
     
-    shadowColor: "#0f172a",
+    shadowColor: "#0F1E33",
     shadowOpacity: 0.06,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },

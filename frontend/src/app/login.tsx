@@ -1,14 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useApp } from "../context/AppContext";
+import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Role, useApp } from "../context/AppContext";
 
 export default function Login() {
-  const { user, login, register, logout } = useApp();
-  const [mode, setMode] = useState("login"); // "login" หรือ "register"
+  const { user, login, logout, register } = useApp();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState("user"); // "user" หรือ "admin"
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<Role>("customer");
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
 
   // ส่วนแสดงผลเมื่อล็อกอินสำเร็จแล้ว (Profile)
   if (user) {
@@ -16,21 +20,30 @@ export default function Login() {
       <SafeAreaView style={styles.container}>
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>
+              {(user.username || "U").charAt(0).toUpperCase()}
+            </Text>
           </View>
           <Text style={styles.profileName}>{user.username}</Text>
-          <Text style={styles.profileEmail}>{user.email}</Text>
+          <Text style={styles.profileEmail}>{user.email || "No email provided"}</Text>
           
           <View style={[
             styles.badge, 
-            { backgroundColor: user.role === "admin" ? "#e0f2fe" : "#e6f4ea" }
+            { backgroundColor: user.role === "admin" ? "#EAF1FB" : "#E3F8EA" }
           ]}>
-            <Text style={[
-              styles.badgeText, 
-              { color: user.role === "admin" ? "#0369a1" : "#137333" }
-            ]}>
-              {user.role === "admin" ? "⚡ ADMIN" : "🛒 CUSTOMER"}
-            </Text>
+            <View style={styles.badgeRow}>
+              <Ionicons
+                name={user.role === "admin" ? "flash" : "cart"}
+                size={13}
+                color={user.role === "admin" ? "#1D4ED8" : "#16A34A"}
+              />
+              <Text style={[
+                styles.badgeText,
+                { color: user.role === "admin" ? "#1D4ED8" : "#16A34A" }
+              ]}>
+                {user.role === "admin" ? "ADMIN" : "CUSTOMER"}
+              </Text>
+            </View>
           </View>
 
           <Text style={styles.welcomeTip}>You have successfully logged in! You can now use the system.</Text>
@@ -43,37 +56,75 @@ export default function Login() {
     );
   }
 
-  // ฟังก์ชันเวลายื่นฟอร์ม
-  const handleSubmit = () => {
+  // ฟังก์ชันยื่นฟอร์ม
+  const handleSubmit = async () => {
+    setFeedback(null);
     if (!username.trim() || !password.trim()) {
-      Alert.alert("Incomplete information", "Please enter your Username and Password");
+      setFeedback({ type: "error", message: "Please enter your username and password." });
       return;
     }
 
-    if (mode === "login") {
-      if (!login(username.trim(), password)) {
-        Alert.alert("Login failed", "Incorrect username or password.");
-      }
-    } else {
-      if (!email.trim()) {
-        Alert.alert("Incomplete information", "Please enter your email address.");
-        return;
-      }
-      // ส่งค่า selectedRole ("user" หรือ "admin") ไปตอนลงทะเบียนด้วย
-      if (!register(username.trim(), email.trim(), password, selectedRole)) {
-        Alert.alert("Registration failed", "This username is already in use.");
+    if (mode === "register" && !email.trim()) {
+      setFeedback({ type: "error", message: "Please enter your email address." });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // เรียกใช้ login โดยรองรับรูปแบบ Parameter ปลอดภัย
+      if (mode === "login") {
+        await login(username.trim(), password, selectedRole, true);
       } else {
-        Alert.alert("Successful", "Registration complete! You've been logged in immediately.");
+        await register(username.trim(), email.trim(), password, true);
       }
+      setFeedback({ type: "success", message: mode === "login" ? "Logged in successfully." : "Registration complete." });
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err?.message || "Incorrect username or password." });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.form}>
-        <Text style={styles.appLogo}>⚡ PAPENGIE PLUG</Text>
-        <Text style={styles.header}>{mode === "login" ? "Log in to the power strip shop" : "Register as a new member"}</Text>
+        <View style={styles.appLogoRow}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="flash" size={16} color="#fff" />
+          </View>
+          <Text style={styles.appLogo}>PAPENGIE PLUG</Text>
+        </View>
+        <Text style={styles.header}>
+          {mode === "login" ? "Log in to the power strip shop" : "Register as a new member"}
+        </Text>
         
+        {/* ช่องเลือกบทบาท (Role) */}
+        {mode === "login" && <Text style={styles.label}>Select User Role</Text>}
+        {mode === "login" &&
+        <View style={styles.roleContainer}>
+          <TouchableOpacity 
+            style={[styles.roleButton, selectedRole === "customer" && styles.roleButtonActive]} 
+            onPress={() => setSelectedRole("customer")}
+          >
+            <Ionicons name="cart" size={14} color={selectedRole === "customer" ? "#fff" : "#5B6B85"} />
+            <Text style={[styles.roleButtonText, selectedRole === "customer" && styles.roleButtonTextActive]}>
+              {" "}Customer
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.roleButton, selectedRole === "admin" && styles.roleButtonActive]}
+            onPress={() => setSelectedRole("admin")}
+          >
+            <Ionicons name="flash" size={14} color={selectedRole === "admin" ? "#fff" : "#5B6B85"} />
+            <Text style={[styles.roleButtonText, selectedRole === "admin" && styles.roleButtonTextActive]}>
+              {" "}Admin
+            </Text>
+          </TouchableOpacity>
+        </View>
+        }
+
         {/* ช่องกรอก Username */}
         <Text style={styles.label}>Username</Text>
         <TextInput 
@@ -82,7 +133,7 @@ export default function Login() {
           onChangeText={setUsername} 
           autoCapitalize="none" 
           placeholder="Enter username" 
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor="#8A97AC"
         />
         
         {/* ช่องกรอก Email (แสดงเฉพาะตอนสมัครสมาชิก) */}
@@ -96,26 +147,8 @@ export default function Login() {
               autoCapitalize="none" 
               keyboardType="email-address" 
               placeholder="name@example.com" 
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor="#8A97AC"
             />
-
-            {/* ส่วนเลือกสถานะผู้ใช้งาน (แสดงเฉพาะตอนสมัครสมาชิกตามบรีฟ) */}
-            <Text style={styles.label}>Select user type.</Text>
-            <View style={styles.roleContainer}>
-              <TouchableOpacity 
-                style={[styles.roleButton, selectedRole === "user" && styles.roleButtonActive]} 
-                onPress={() => setSelectedRole("user")}
-              >
-                <Text style={[styles.roleButtonText, selectedRole === "user" && styles.roleButtonTextActive]}>🛒Customer</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.roleButton, selectedRole === "admin" && styles.roleButtonActive]} 
-                onPress={() => setSelectedRole("admin")}
-              >
-                <Text style={[styles.roleButtonText, selectedRole === "admin" && styles.roleButtonTextActive]}>⚡Admin</Text>
-              </TouchableOpacity>
-            </View>
           </>
         )}
         
@@ -125,58 +158,85 @@ export default function Login() {
           style={styles.input} 
           value={password} 
           onChangeText={setPassword} 
-          secureTextEntry 
+          secureTextEntry={!passwordVisible}
           placeholder="••••••••" 
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor="#8A97AC"
         />
         
         {/* ปุ่มกดยืนยันหลัก */}
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>{mode === "login" ? "Log in" : "Sign up and register"}</Text>
+        <TouchableOpacity style={styles.passwordToggle} onPress={() => setPasswordVisible((visible) => !visible)}>
+          <Text style={styles.passwordToggleText}>{passwordVisible ? "Hide password" : "Show password"}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.submitButton, loading && { opacity: 0.7 }]} 
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          <Text style={styles.submitButtonText}>
+            {loading ? "Processing..." : mode === "login" ? "Log in" : "Sign up and register"}
+          </Text>
+        </TouchableOpacity>
+
+        {feedback && (
+          <View style={[styles.feedback, feedback.type === "error" ? styles.feedbackError : styles.feedbackSuccess]}>
+            <Text style={[styles.feedbackText, feedback.type === "error" ? styles.feedbackErrorText : styles.feedbackSuccessText]}>{feedback.message}</Text>
+          </View>
+        )}
         
         {/* สลับหน้าจอ สมัครสมาชิก / ล็อคอิน */}
-        <TouchableOpacity onPress={() => setMode(mode === "login" ? "register" : "login")}>
+        <TouchableOpacity onPress={() => { setMode(mode === "login" ? "register" : "login"); setFeedback(null); }}>
           <Text style={styles.switchText}>
-            {mode === "login" ? "Don't have an account yet? Sign up here" : "Already have an account? Return to login page"}
+            {mode === "login" 
+              ? "Don't have an account yet? Sign up here" 
+              : "Already have an account? Return to login page"}
           </Text>
         </TouchableOpacity>
         
-        <Text style={styles.hint}>Test admin account: username "admin" / password "1234"</Text>
+        {mode === "register" && <Text style={styles.hint}>New accounts are created as customer accounts.</Text>}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1, backgroundColor: "#F4F7FC" },
   form: { padding: 24, paddingTop: 40 },
-  appLogo: { fontSize: 24, fontWeight: "900", color: "#0284c7", textAlign: "center", marginBottom: 8, letterSpacing: 1 },
-  header: { fontSize: 18, fontWeight: "700", marginBottom: 24, color: "#0f172a", textAlign: "center" },
-  label: { fontSize: 14, fontWeight: "600", color: "#334155", marginBottom: 6, marginTop: 14 },
-  input: { backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: "#e2e8f0", fontSize: 15, color: "#0f172a" },
+  appLogoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 },
+  logoBadge: { width: 30, height: 30, borderRadius: 9, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" },
+  appLogo: { fontSize: 24, fontWeight: "900", color: "#0A1830", textAlign: "center", letterSpacing: 1 },
+  header: { fontSize: 18, fontWeight: "700", marginBottom: 24, color: "#0F1E33", textAlign: "center" },
+  label: { fontSize: 14, fontWeight: "600", color: "#0F1E33", marginBottom: 6, marginTop: 14 },
+  input: { backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: "#E2E9F5", fontSize: 15, color: "#0F1E33" },
+  passwordToggle: { alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 4 },
+  passwordToggleText: { color: "#2563EB", fontWeight: "700", fontSize: 14 },
   
-  // ตัวเลือกบทบาท
   roleContainer: { flexDirection: "row", gap: 10, marginTop: 4 },
-  roleButton: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", alignItems: "center" },
-  roleButtonActive: { backgroundColor: "#0284c7", borderColor: "#0284c7" },
-  roleButtonText: { fontSize: 13, fontWeight: "600", color: "#475569" },
+  roleButton: { flex: 1, flexDirection: "row", paddingVertical: 12, borderRadius: 10, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E9F5", alignItems: "center", justifyContent: "center" },
+  roleButtonActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
+  roleButtonText: { fontSize: 13, fontWeight: "600", color: "#5B6B85" },
   roleButtonTextActive: { color: "#fff", fontWeight: "700" },
 
-  submitButton: { backgroundColor: "#0284c7", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 28 },
+  submitButton: { backgroundColor: "#2563EB", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 28 },
   submitButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  switchText: { color: "#0284c7", textAlign: "center", marginTop: 20, fontWeight: "600", fontSize: 14 },
-  hint: { textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 30 },
+  feedback: { borderRadius: 10, padding: 12, marginTop: 14 },
+  feedbackError: { backgroundColor: "#FDE7E7", borderWidth: 1, borderColor: "#F3B4B4" },
+  feedbackSuccess: { backgroundColor: "#E3F8EA", borderWidth: 1, borderColor: "#A7E8BE" },
+  feedbackText: { fontSize: 14, textAlign: "center" },
+  feedbackErrorText: { color: "#DC2626" },
+  feedbackSuccessText: { color: "#16A34A" },
+  switchText: { color: "#2563EB", textAlign: "center", marginTop: 20, fontWeight: "600", fontSize: 14 },
+  hint: { textAlign: "center", color: "#8A97AC", fontSize: 12, marginTop: 30 },
   
-  // หน้าโปรไฟล์หลังล็อกอิน
   profileCard: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, marginTop: 60 },
-  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#0ea5e9", alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#38BDF8", alignItems: "center", justifyContent: "center", marginBottom: 16 },
   avatarText: { color: "#fff", fontSize: 36, fontWeight: "700" },
-  profileName: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  profileEmail: { fontSize: 14, color: "#64748b", marginTop: 4, marginBottom: 12 },
+  profileName: { fontSize: 22, fontWeight: "700", color: "#0F1E33" },
+  profileEmail: { fontSize: 14, color: "#5B6B85", marginTop: 4, marginBottom: 12 },
   badge: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginBottom: 20 },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   badgeText: { fontSize: 13, fontWeight: "700" },
-  welcomeTip: { color: "#64748b", fontSize: 14, marginBottom: 40, textAlign: "center" },
-  logoutButton: { borderWidth: 1.5, borderColor: "#ef4444", paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, width: "100%", alignItems: "center" },
-  logoutButtonText: { color: "#ef4444", fontWeight: "700", fontSize: 15 },
+  welcomeTip: { color: "#5B6B85", fontSize: 14, marginBottom: 40, textAlign: "center" },
+  logoutButton: { borderWidth: 1.5, borderColor: "#DC2626", paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, width: "100%", alignItems: "center" },
+  logoutButtonText: { color: "#DC2626", fontWeight: "700", fontSize: 15 },
 });

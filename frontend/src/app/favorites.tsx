@@ -12,7 +12,7 @@ export default function Favorites() {
       <Text style={styles.header}>Favorite products</Text>
       {favProducts.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="heart-outline" size={48} color="#ccc" />
+          <Ionicons name="heart-outline" size={48} color="#8A97AC" />
           <Text style={styles.emptyText}>There's nothing I like yet.</Text>
         </View>
       ) : (
@@ -29,7 +29,7 @@ export default function Favorites() {
                     <Text style={styles.addBtnText}>Add to cart</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => toggleFavorite(p.id)}>
-                    <Ionicons name="heart" size={22} color="#e63946" />
+                    <Ionicons name="heart" size={22} color="#DC2626" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -42,16 +42,16 @@ export default function Favorites() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f5f5f5" },
-  header: { fontSize: 20, fontWeight: "700", color: "#222", padding: 16, paddingBottom: 0 },
-  emptyState: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyText: { color: "#999", marginTop: 10, fontSize: 14 },
-  card: { flexDirection: "row", backgroundColor: "#fff", borderRadius: 12, padding: 10, marginBottom: 12, alignItems: "center" },
-  image: { width: 70, height: 70, borderRadius: 10 },
-  brand: { fontSize: 11, color: "#999", textTransform: "uppercase" },
-  name: { fontSize: 14, fontWeight: "700", color: "#222" },
-  price: { color: "#bfa14a", fontWeight: "700", marginTop: 2 },
-  actions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
-  addBtn: { backgroundColor: "#000", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
-  addBtnText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  container: { flex: 1, backgroundColor: "#F4F7FC" },
+  header: { fontSize: 22, fontWeight: "800", color: "#0F1E33", padding: 20, paddingBottom: 4 },
+  emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  emptyText: { color: "#8A97AC", marginTop: 10, fontSize: 15, fontWeight: "500" },
+  card: { flexDirection: "row", backgroundColor: "#fff", borderRadius: 16, padding: 12, marginBottom: 12, alignItems: "center", borderWidth: 1, borderColor: "#E2E9F5" },
+  image: { width: 72, height: 72, borderRadius: 12, backgroundColor: "#EAF1FB" },
+  brand: { fontSize: 11, color: "#8A97AC", textTransform: "uppercase", fontWeight: "700" },
+  name: { fontSize: 14, fontWeight: "700", color: "#0F1E33", marginTop: 2 },
+  price: { color: "#2563EB", fontWeight: "800", fontSize: 15, marginTop: 4 },
+  actions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 },
+  addBtn: { backgroundColor: "#0A1830", paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
+  addBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
 });
