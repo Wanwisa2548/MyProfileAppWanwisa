@@ -1,9 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../components/AnimatedPressable";
 import { useApp } from "../context/AppContext";
 
 export default function Favorites() {
   const { products, favorites, toggleFavorite, addToCart } = useApp();
+  const router = useRouter();
   const favProducts = products.filter((p) => favorites.includes(p.id));
   const formatPrice = (n: number) => `฿${n.toLocaleString()}`;
 
@@ -16,24 +20,29 @@ export default function Favorites() {
           <Text style={styles.emptyText}>There's nothing I like yet.</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
           {favProducts.map((p) => (
-            <View key={p.id} style={styles.card}>
+            <AnimatedPressable
+              key={p.id}
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/product/${p.id}`)}
+            >
               <Image source={{ uri: p.image }} style={styles.image} />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.brand}>{p.brand}</Text>
                 <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
                 <Text style={styles.price}>{formatPrice(p.price)}</Text>
                 <View style={styles.actions}>
-                  <TouchableOpacity style={styles.addBtn} onPress={() => addToCart(p.id)}>
+                  <AnimatedPressable style={styles.addBtn} onPress={() => addToCart(p.id)}>
                     <Text style={styles.addBtnText}>Add to cart</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => toggleFavorite(p.id)}>
+                  </AnimatedPressable>
+                  <AnimatedPressable onPress={() => toggleFavorite(p.id)}>
                     <Ionicons name="heart" size={22} color="#DC2626" />
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               </View>
-            </View>
+            </AnimatedPressable>
           ))}
         </ScrollView>
       )}

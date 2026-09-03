@@ -7,7 +7,7 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-// 🔵 Papengie brand palette — deep navy, royal/electric blue, sky accent.
+// 🔵 Power Plugs brand palette — deep navy, royal/electric blue, sky accent.
 export const Brand = {
   navy900: '#0A1830',
   navy800: '#122A4D',

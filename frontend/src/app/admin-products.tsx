@@ -1,22 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
     Image,
     Modal,
-    SafeAreaView,
     ScrollView,
     Switch,
     StyleSheet,
     Text,
     TextInput,
-    TouchableOpacity,
     View,
 } from "react-native";
-import { Product, useApp } from "../context/AppContext";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../components/AnimatedPressable";
+import { LOW_STOCK_THRESHOLD, Product, useApp } from "../context/AppContext";
 import { showAlert } from "../utils/crossPlatformAlert";
+import { mirrorImageUrlToGitHub, uploadImageToGitHub } from "../utils/githubImageUpload";
 
 export default function AdminProducts() {
   const { adminProducts, user, deleteProduct, updateProduct, toggleProductStatus } = useApp();
@@ -28,9 +31,12 @@ export default function AdminProducts() {
   const [editBrand, setEditBrand] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editOldPrice, setEditOldPrice] = useState("");
+  const [editStock, setEditStock] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editImage, setEditImage] = useState("");
+  const [editImageFileName, setEditImageFileName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingEditImage, setUploadingEditImage] = useState(false);
   const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
 
   // 🗑️ State สำหรับ Modal ยืนยันการลบแบบสวยงาม
@@ -46,9 +52,9 @@ export default function AdminProducts() {
         <Text style={styles.lockedSubtitle}>
           Admin permission is required to manage products.
         </Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <AnimatedPressable style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backBtnText}>Go Back</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </SafeAreaView>
     );
   }
@@ -81,8 +87,38 @@ export default function AdminProducts() {
     setEditBrand(p.brand);
     setEditPrice(String(p.price));
     setEditOldPrice(p.oldPrice ? String(p.oldPrice) : "");
+    setEditStock(String(p.stock ?? 0));
     setEditCategory(p.category);
     setEditImage(p.image);
+    setEditImageFileName("");
+  };
+
+  // 🖼️ เลือกรูปใหม่จากเครื่องตอนแก้ไข
+  const handleEditPickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAlert("Permission required", "Please allow access to your photos to choose a product image.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.7,
+    });
+
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset?.uri) return;
+
+    const compressed = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      [{ resize: { width: 1200 } }],
+      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+    if (!compressed.base64) return;
+
+    setEditImage(`data:image/jpeg;base64,${compressed.base64}`);
+    setEditImageFileName(asset.fileName || "Selected image");
   };
 
   // 💾 บันทึกการแก้ไข
@@ -90,13 +126,35 @@ export default function AdminProducts() {
     if (!editingProduct) return;
     try {
       setSaving(true);
+
+      // ถ้าเลือกรูปใหม่จากเครื่อง (data URL) ให้อัปโหลดขึ้น GitHub ก่อน แล้วใช้ลิงก์แทน
+      // ถ้าเป็น URL รูปจากที่อื่น ก็ดาวน์โหลดมาอัปโหลดขึ้น GitHub เหมือนกัน (ถ้าเป็นลิงก์ GitHub
+      // ของ repo นี้อยู่แล้วจะข้ามไม่อัปโหลดซ้ำ)
+      let finalImage = editImage.trim();
+      if (finalImage.startsWith("data:")) {
+        setUploadingEditImage(true);
+        try {
+          finalImage = await uploadImageToGitHub(finalImage, editImageFileName || `product-${Date.now()}.jpg`);
+        } finally {
+          setUploadingEditImage(false);
+        }
+      } else if (/^https?:\/\//i.test(finalImage)) {
+        setUploadingEditImage(true);
+        try {
+          finalImage = await mirrorImageUrlToGitHub(finalImage);
+        } finally {
+          setUploadingEditImage(false);
+        }
+      }
+
       await updateProduct(editingProduct.id, {
         name: editName.trim(),
         brand: editBrand.trim(),
         price: Number(editPrice),
         oldPrice: editOldPrice.trim() ? Number(editOldPrice) : null,
+        stock: Number(editStock) || 0,
         category: editCategory,
-        image: editImage.trim(),
+        image: finalImage,
       });
       setEditingProduct(null);
     } catch (err) {
@@ -125,20 +183,20 @@ export default function AdminProducts() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <AnimatedPressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0F1E33" />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text style={styles.headerTitle}>Inventory Management</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => router.push("/add")}>
+        <AnimatedPressable style={styles.addBtn} onPress={() => router.push("/add")}>
           <Ionicons name="add" size={20} color="#fff" />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
       {/* List รายการสินค้า */}
       <FlatList
         data={adminProducts}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
         renderItem={({ item }) => (
           <View style={styles.productRow}>
             <Image
@@ -152,10 +210,23 @@ export default function AdminProducts() {
                 {item.name}
               </Text>
               <Text style={styles.price}>฿{item.price.toLocaleString()}</Text>
-              <View style={[styles.statusBadge, item.isActive ? styles.statusActive : styles.statusInactive]}>
-                <Text style={[styles.statusText, item.isActive ? styles.statusActiveText : styles.statusInactiveText]}>
-                  {item.isActive ? "Active" : "Inactive"}
-                </Text>
+              <View style={styles.badgeRow}>
+                <View style={[styles.statusBadge, item.isActive ? styles.statusActive : styles.statusInactive]}>
+                  <Text style={[styles.statusText, item.isActive ? styles.statusActiveText : styles.statusInactiveText]}>
+                    {item.isActive ? "Active" : "Inactive"}
+                  </Text>
+                </View>
+                {item.stock <= 0 ? (
+                  <View style={[styles.statusBadge, styles.stockOut]}>
+                    <Text style={[styles.statusText, styles.stockOutText]}>Out of stock</Text>
+                  </View>
+                ) : item.stock <= LOW_STOCK_THRESHOLD ? (
+                  <View style={[styles.statusBadge, styles.stockLow]}>
+                    <Text style={[styles.statusText, styles.stockLowText]}>Low stock: {item.stock}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.stockNormalText}>Stock: {item.stock}</Text>
+                )}
               </View>
             </View>
 
@@ -167,18 +238,18 @@ export default function AdminProducts() {
                 trackColor={{ false: "#E2E9F5", true: "#86efac" }}
                 thumbColor={item.isActive ? "#16a34a" : "#5B6B85"}
               />
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.editBtn}
                 onPress={() => handleOpenEdit(item)}
               >
                 <Ionicons name="pencil" size={16} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 style={styles.deleteBtn}
                 onPress={() => handleOpenDelete(item)}
               >
                 <Ionicons name="trash" size={16} color="#fff" />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         )}
@@ -201,14 +272,14 @@ export default function AdminProducts() {
             </Text>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.cancelBtn}
                 onPress={() => setDeletingProduct(null)}
                 disabled={deleting}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 style={styles.confirmDeleteBtn}
                 onPress={handleConfirmDelete}
                 disabled={deleting}
@@ -218,7 +289,7 @@ export default function AdminProducts() {
                 ) : (
                   <Text style={styles.confirmDeleteBtnText}>Yes, Delete</Text>
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </View>
@@ -257,38 +328,60 @@ export default function AdminProducts() {
                 value={editOldPrice}
                 onChangeText={setEditOldPrice}
               />
+              <Text style={styles.inputLabel}>Stock</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="numeric"
+                value={editStock}
+                onChangeText={setEditStock}
+              />
               <Text style={styles.inputLabel}>Category</Text>
               <TextInput
                 style={styles.modalInput}
                 value={editCategory}
                 onChangeText={setEditCategory}
               />
-              <Text style={styles.inputLabel}>Image URL</Text>
+              <Text style={styles.inputLabel}>Product Image</Text>
+              <AnimatedPressable style={styles.imagePickerButton} onPress={handleEditPickImage}>
+                <Text style={styles.imagePickerButtonText}>Choose JPEG / PNG from device</Text>
+              </AnimatedPressable>
+              {editImageFileName ? <Text style={styles.selectedFile}>{editImageFileName}</Text> : null}
+              {editImage ? (
+                <Image source={{ uri: editImage }} style={styles.editImagePreview} resizeMode="contain" />
+              ) : null}
+              <Text style={styles.inputLabel}>Or enter an image URL</Text>
               <TextInput
                 style={styles.modalInput}
                 value={editImage}
-                onChangeText={setEditImage}
+                onChangeText={(value) => { setEditImage(value); setEditImageFileName(""); }}
+                autoCapitalize="none"
               />
             </ScrollView>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.cancelBtn}
                 onPress={() => setEditingProduct(null)}
+                disabled={saving}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 style={styles.saveBtn}
                 onPress={handleSaveEdit}
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color="#fff" />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator color="#fff" />
+                    {uploadingEditImage ? (
+                      <Text style={styles.saveBtnText}>Uploading image...</Text>
+                    ) : null}
+                  </View>
                 ) : (
                   <Text style={styles.saveBtnText}>Save Changes</Text>
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
         </View>
@@ -314,12 +407,18 @@ const styles = StyleSheet.create({
   brand: { fontSize: 10, color: "#8A97AC", fontWeight: "700", textTransform: "uppercase" },
   productName: { fontSize: 14, fontWeight: "700", color: "#0F1E33" },
   price: { fontSize: 14, fontWeight: "800", color: "#2563EB", marginTop: 2 },
-  statusBadge: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginTop: 5 },
+  badgeRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 5 },
+  statusBadge: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   statusActive: { backgroundColor: "#E3F8EA" },
   statusInactive: { backgroundColor: "#FDE7E7" },
   statusText: { fontSize: 10, fontWeight: "800" },
   statusActiveText: { color: "#16A34A" },
   statusInactiveText: { color: "#DC2626" },
+  stockLow: { backgroundColor: "#FEF3C7" },
+  stockLowText: { color: "#D97706" },
+  stockOut: { backgroundColor: "#FDE7E7" },
+  stockOutText: { color: "#DC2626" },
+  stockNormalText: { fontSize: 11, color: "#5B6B85", fontWeight: "600" },
   actionButtons: { flexDirection: "row", gap: 8 },
   editBtn: { backgroundColor: "#D97706", padding: 8, borderRadius: 8 },
   deleteBtn: { backgroundColor: "#DC2626", padding: 8, borderRadius: 8 },
@@ -343,4 +442,8 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: "#5B6B85", fontWeight: "700", fontSize: 14 },
   saveBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: "#2563EB" },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  imagePickerButton: { backgroundColor: "#EAF1FB", borderWidth: 1, borderColor: "#BFD3F2", borderRadius: 8, paddingVertical: 10, alignItems: "center", marginTop: 2 },
+  imagePickerButtonText: { color: "#1D4ED8", fontWeight: "700", fontSize: 13 },
+  selectedFile: { color: "#16A34A", fontSize: 12, marginTop: 6 },
+  editImagePreview: { width: "100%", height: 140, marginTop: 10, borderRadius: 8, backgroundColor: "#EAF1FB" },
 });

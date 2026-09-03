@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
@@ -5,17 +6,17 @@ import { useState } from "react";
 import {
     ActivityIndicator,
     Image,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TextInput,
-    TouchableOpacity,
     View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../components/AnimatedPressable";
 import { useApp } from "../context/AppContext";
 import { showAlert } from "../utils/crossPlatformAlert";
-import { uploadImageToGitHub } from "../utils/githubImageUpload";
+import { mirrorImageUrlToGitHub, uploadImageToGitHub } from "../utils/githubImageUpload";
 
 const CATEGORIES = ["Power Strips", "Smart Plugs", "Adapters"];
 
@@ -27,6 +28,7 @@ export default function AddProduct() {
   const [brand, setBrand] = useState("");
   const [price, setPrice] = useState("");
   const [oldPrice, setOldPrice] = useState("");
+  const [stock, setStock] = useState("");
   const [image, setImage] = useState("");
   const [imageFileName, setImageFileName] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -44,9 +46,9 @@ export default function AddProduct() {
             ? "You must log in before you can add a new power plug system" 
             : "Your account does not have permission to manage the power plug inventory."}
         </Text>
-        <TouchableOpacity style={styles.lockedButton} onPress={() => router.push("/login")}>
+        <AnimatedPressable style={styles.lockedButton} onPress={() => router.push("/login")}>
           <Text style={styles.lockedButtonText}>Go to the login page.</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </SafeAreaView>
     );
   }
@@ -59,6 +61,11 @@ export default function AddProduct() {
 
     if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
       showAlert("Invalid price", "Please enter a valid selling price.");
+      return;
+    }
+
+    if (stock.trim() && (!Number.isFinite(Number(stock)) || Number(stock) < 0)) {
+      showAlert("Invalid stock", "Please enter a valid stock quantity.");
       return;
     }
 
@@ -76,11 +83,20 @@ export default function AddProduct() {
       // ถ้าเลือกรูปจากเครื่อง (data URL) ให้อัปโหลดขึ้น GitHub ก่อน แล้วใช้ลิงก์
       // raw.githubusercontent.com แทน เพื่อไม่ให้ backend ของเราต้องรับ
       // request ก้อนใหญ่ (ซึ่งเป็นสาเหตุของ 413 Payload Too Large เดิม)
+      // ถ้าเป็น URL รูปจากที่อื่น ก็ดาวน์โหลดมาอัปโหลดขึ้น GitHub ให้เหมือนกัน
+      // เพื่อให้รูปสินค้าทั้งหมดถูกเก็บไว้ที่เดียวกัน ไม่ผูกกับลิงก์ภายนอกที่อาจหายไปภายหลัง
       let finalImage = image.trim();
       if (finalImage.startsWith("data:")) {
         setUploadingImage(true);
         try {
           finalImage = await uploadImageToGitHub(finalImage, imageFileName || `product-${Date.now()}.jpg`);
+        } finally {
+          setUploadingImage(false);
+        }
+      } else if (/^https?:\/\//i.test(finalImage)) {
+        setUploadingImage(true);
+        try {
+          finalImage = await mirrorImageUrlToGitHub(finalImage);
         } finally {
           setUploadingImage(false);
         }
@@ -92,6 +108,7 @@ export default function AddProduct() {
         price: parsedPrice,
         oldPrice: parsedOldPrice,
         rating: 5.0,
+        stock: stock.trim() ? Number(stock) : 0,
         category,
         image: finalImage
       } as any);
@@ -105,7 +122,7 @@ export default function AddProduct() {
         }]
       );
 
-      setName(""); setBrand(""); setPrice(""); setOldPrice(""); setImage("");
+      setName(""); setBrand(""); setPrice(""); setOldPrice(""); setStock(""); setImage("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to add product.";
       console.error("Error adding product:", error);
@@ -145,7 +162,13 @@ export default function AddProduct() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.form}>
-        <Text style={styles.header}>Added new power plug products.</Text>
+        <View style={styles.headerCard}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="flash" size={20} color="#fff" />
+          </View>
+          <Text style={styles.header}>Add New Power Plug Product</Text>
+          <Text style={styles.headerSubtitle}>Create a product for your store</Text>
+        </View>
         
         <Text style={styles.label}>Product Name/Model</Text>
         <TextInput 
@@ -168,13 +191,13 @@ export default function AddProduct() {
         <Text style={styles.label}>Equipment Category</Text>
         <View style={styles.categoryRow}>
           {CATEGORIES.map((c) => (
-            <TouchableOpacity 
+            <AnimatedPressable 
               key={c} 
               style={[styles.catChip, category === c && styles.catChipActive]} 
               onPress={() => setCategory(c)}
             >
               <Text style={[styles.catChipText, category === c && styles.catChipTextActive]}>{c}</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ))}
         </View>
         
@@ -198,10 +221,20 @@ export default function AddProduct() {
           placeholderTextColor="#8A97AC" 
         />
         
+        <Text style={styles.label}>Stock quantity</Text>
+        <TextInput
+          style={styles.input}
+          value={stock}
+          onChangeText={setStock}
+          keyboardType="numeric"
+          placeholder="e.g. 20"
+          placeholderTextColor="#8A97AC"
+        />
+
         <Text style={styles.label}>Product image</Text>
-        <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
+        <AnimatedPressable style={styles.imagePickerButton} onPress={handlePickImage}>
           <Text style={styles.imagePickerButtonText}>Choose JPEG / PNG from device</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
         {imageFileName ? <Text style={styles.selectedFile}>{imageFileName}</Text> : null}
         {image ? <Image source={{ uri: image }} style={styles.imagePreview} resizeMode="contain" /> : null}
         <Text style={styles.orText}>Or enter an image URL</Text>
@@ -214,7 +247,7 @@ export default function AddProduct() {
           placeholderTextColor="#8A97AC" 
         />
         
-        <TouchableOpacity 
+        <AnimatedPressable 
           style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
           onPress={handleSubmit}
           disabled={loading}
@@ -229,7 +262,7 @@ export default function AddProduct() {
           ) : (
             <Text style={styles.submitButtonText}>Save and display in the store.</Text>
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -243,8 +276,11 @@ const styles = StyleSheet.create({
   lockedButton: { backgroundColor: "#2563EB", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
   lockedButtonText: { color: "#fff", fontWeight: "700" },
   
-  form: { padding: 20, paddingBottom: 140 },
-  header: { fontSize: 20, fontWeight: "800", marginBottom: 20, color: "#0F1E33", letterSpacing: 0.5 },
+  form: { padding: 20, paddingTop: 42, paddingBottom: 140 },
+  headerCard: { alignItems: "center", backgroundColor: "#fff", borderRadius: 18, borderWidth: 1, borderColor: "#D7E5F6", paddingHorizontal: 16, paddingVertical: 16, marginBottom: 22, shadowColor: "#2563EB", shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
+  headerIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#2563EB", marginBottom: 8, shadowColor: "#38BDF8", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
+  header: { fontSize: 20, fontWeight: "900", textAlign: "center", color: "#0F1E33", letterSpacing: 0.2 },
+  headerSubtitle: { fontSize: 12, fontWeight: "600", color: "#5B6B85", textAlign: "center", marginTop: 5 },
   label: { fontSize: 13, fontWeight: "700", color: "#0F1E33", marginBottom: 6, marginTop: 14 },
   input: { backgroundColor: "#fff", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: "#E2E9F5", fontSize: 14, color: "#0F1E33" },
   

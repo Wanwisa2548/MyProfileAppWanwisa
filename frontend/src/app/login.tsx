@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../components/AnimatedPressable";
 import { Role, useApp } from "../context/AppContext";
 
 export default function Login() {
@@ -48,9 +50,9 @@ export default function Login() {
 
           <Text style={styles.welcomeTip}>You have successfully logged in! You can now use the system.</Text>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+          <AnimatedPressable style={styles.logoutButton} onPress={logout}>
             <Text style={styles.logoutButtonText}>Sign Out</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </SafeAreaView>
     );
@@ -90,10 +92,14 @@ export default function Login() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.form}>
         <View style={styles.appLogoRow}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="flash" size={16} color="#fff" />
+          <View style={styles.loginLogoFrame}>
+            <Image
+              source={require("../../assets/images/papengie-logo.png")}
+              style={styles.loginLogoImage}
+              resizeMode="cover"
+            />
           </View>
-          <Text style={styles.appLogo}>PAPENGIE PLUG</Text>
+          <Text style={styles.appLogo}>POWER PLUGS</Text>
         </View>
         <Text style={styles.header}>
           {mode === "login" ? "Log in to the power strip shop" : "Register as a new member"}
@@ -103,7 +109,7 @@ export default function Login() {
         {mode === "login" && <Text style={styles.label}>Select User Role</Text>}
         {mode === "login" &&
         <View style={styles.roleContainer}>
-          <TouchableOpacity 
+          <AnimatedPressable 
             style={[styles.roleButton, selectedRole === "customer" && styles.roleButtonActive]} 
             onPress={() => setSelectedRole("customer")}
           >
@@ -111,9 +117,9 @@ export default function Login() {
             <Text style={[styles.roleButtonText, selectedRole === "customer" && styles.roleButtonTextActive]}>
               {" "}Customer
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.roleButton, selectedRole === "admin" && styles.roleButtonActive]}
             onPress={() => setSelectedRole("admin")}
           >
@@ -121,7 +127,7 @@ export default function Login() {
             <Text style={[styles.roleButtonText, selectedRole === "admin" && styles.roleButtonTextActive]}>
               {" "}Admin
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
         }
 
@@ -164,11 +170,11 @@ export default function Login() {
         />
         
         {/* ปุ่มกดยืนยันหลัก */}
-        <TouchableOpacity style={styles.passwordToggle} onPress={() => setPasswordVisible((visible) => !visible)}>
+        <AnimatedPressable style={styles.passwordToggle} onPress={() => setPasswordVisible((visible) => !visible)}>
           <Text style={styles.passwordToggleText}>{passwordVisible ? "Hide password" : "Show password"}</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity 
+        <AnimatedPressable 
           style={[styles.submitButton, loading && { opacity: 0.7 }]} 
           onPress={handleSubmit}
           disabled={loading}
@@ -176,7 +182,7 @@ export default function Login() {
           <Text style={styles.submitButtonText}>
             {loading ? "Processing..." : mode === "login" ? "Log in" : "Sign up and register"}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
         {feedback && (
           <View style={[styles.feedback, feedback.type === "error" ? styles.feedbackError : styles.feedbackSuccess]}>
@@ -185,13 +191,13 @@ export default function Login() {
         )}
         
         {/* สลับหน้าจอ สมัครสมาชิก / ล็อคอิน */}
-        <TouchableOpacity onPress={() => { setMode(mode === "login" ? "register" : "login"); setFeedback(null); }}>
+        <AnimatedPressable onPress={() => { setMode(mode === "login" ? "register" : "login"); setFeedback(null); }}>
           <Text style={styles.switchText}>
             {mode === "login" 
               ? "Don't have an account yet? Sign up here" 
               : "Already have an account? Return to login page"}
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
         
         {mode === "register" && <Text style={styles.hint}>New accounts are created as customer accounts.</Text>}
       </ScrollView>
@@ -202,8 +208,9 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F4F7FC" },
   form: { padding: 24, paddingTop: 40 },
-  appLogoRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 },
-  logoBadge: { width: 30, height: 30, borderRadius: 9, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" },
+  appLogoRow: { alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  loginLogoFrame: { width: 112, height: 112, borderRadius: 56, overflow: "hidden", backgroundColor: "#fff", borderWidth: 3, borderColor: "#38BDF8", shadowColor: "#2563EB", shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 8 },
+  loginLogoImage: { width: "100%", height: "100%" },
   appLogo: { fontSize: 24, fontWeight: "900", color: "#0A1830", textAlign: "center", letterSpacing: 1 },
   header: { fontSize: 18, fontWeight: "700", marginBottom: 24, color: "#0F1E33", textAlign: "center" },
   label: { fontSize: 14, fontWeight: "600", color: "#0F1E33", marginBottom: 6, marginTop: 14 },

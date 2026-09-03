@@ -1,61 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
 // 🌟 แก้ไข: เพิ่ม Platform เข้ามาในบรรทัด import นี้แล้วค่ะ!
-import { Image, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Receipt, useApp } from "../context/AppContext";
-import { showAlert } from "../utils/crossPlatformAlert";
+import { useRouter } from "expo-router";
+import { Image, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AnimatedPressable } from "../components/AnimatedPressable";
+import { useApp } from "../context/AppContext";
 
 export default function Cart() {
-  const { cart, products, updateQuantity, removeFromCart, cartTotal, checkout } = useApp();
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const { cart, products, updateQuantity, removeFromCart, cartTotal } = useApp();
+  const router = useRouter();
 
   const formatPrice = (n: number) => `฿${n.toLocaleString()}`;
-
-  const handleCheckout = () => {
-    const r = checkout();
-    if (r) {
-      setReceipt(r);
-    } else {
-      showAlert("Empty Cart", "Please add some products to your cart before checking out.");
-    }
-  };
-
-  // --- Success Receipt Screen ---
-  if (receipt) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.receiptWrap}>
-          <View style={styles.receiptCard}>
-            {/* Tech Blue Success Icon */}
-            <Ionicons name="checkmark-circle" size={56} color="#2563EB" style={{ alignSelf: "center", marginBottom: 12 }} />
-            <Text style={styles.receiptTitle}>Payment Successful</Text>
-            <Text style={styles.receiptSub}>Receipt #{receipt.id.slice(-6).toUpperCase()}</Text>
-            <Text style={styles.receiptDate}>{receipt.date}</Text>
-            
-            <View style={styles.divider} />
-            
-            {receipt.items.map((item, idx) => (
-              <View key={idx} style={styles.receiptRow}>
-                <Text style={styles.receiptItemName}>{item.name} x{item.quantity}</Text>
-                <Text style={styles.receiptItemPrice}>{formatPrice(item.price * item.quantity)}</Text>
-              </View>
-            ))}
-            
-            <View style={styles.divider} />
-            
-            <View style={styles.receiptRow}>
-              <Text style={styles.receiptTotalLabel}>Total Paid</Text>
-              <Text style={styles.receiptTotalValue}>{formatPrice(receipt.total)}</Text>
-            </View>
-          </View>
-          
-          <TouchableOpacity style={styles.doneButton} onPress={() => setReceipt(null)}>
-            <Text style={styles.doneButtonText}>Continue Shopping</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
 
   // --- Main Cart Screen ---
   return (
@@ -83,20 +38,20 @@ export default function Cart() {
                     
                     {/* Modern Clean Stepper */}
                     <View style={styles.stepper}>
-                      <TouchableOpacity style={styles.stepperBtn} onPress={() => updateQuantity(c.productId, c.quantity - 1)}>
+                      <AnimatedPressable style={styles.stepperBtn} onPress={() => updateQuantity(c.productId, c.quantity - 1)}>
                         <Ionicons name="remove" size={14} color="#1D4ED8" />
-                      </TouchableOpacity>
+                      </AnimatedPressable>
                       <Text style={styles.stepperQty}>{c.quantity}</Text>
-                      <TouchableOpacity style={styles.stepperBtn} onPress={() => updateQuantity(c.productId, c.quantity + 1)}>
+                      <AnimatedPressable style={styles.stepperBtn} onPress={() => updateQuantity(c.productId, c.quantity + 1)}>
                         <Ionicons name="add" size={14} color="#1D4ED8" />
-                      </TouchableOpacity>
+                      </AnimatedPressable>
                     </View>
                   </View>
                   
                   {/* Styled Trash Button */}
-                  <TouchableOpacity style={styles.removeButton} onPress={() => removeFromCart(c.productId)}>
+                  <AnimatedPressable style={styles.removeButton} onPress={() => removeFromCart(c.productId)}>
                     <Ionicons name="trash-outline" size={20} color="#DC2626" />
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               );
             })}
@@ -108,9 +63,9 @@ export default function Cart() {
               <Text style={styles.totalLabel}>Total Price</Text>
               <Text style={styles.totalValue}>{formatPrice(cartTotal)}</Text>
             </View>
-            <TouchableOpacity style={styles.checkoutButton} onPress={handleCheckout}>
+            <AnimatedPressable style={styles.checkoutButton} onPress={() => router.push("/payment")}>
               <Text style={styles.checkoutButtonText}>Checkout</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </>
       )}
@@ -145,7 +100,8 @@ const styles = StyleSheet.create({
     alignItems: "center", 
     paddingHorizontal: 20, 
     paddingTop: 16, 
-    paddingBottom: Platform.OS === "ios" ? 96 : 84, 
+    paddingBottom: 16,
+    marginBottom: Platform.OS === "ios" ? 104 : 94,
     backgroundColor: "#fff", 
     borderTopWidth: 1, 
     borderTopColor: "#E2E9F5",

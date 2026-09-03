@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppProvider, useApp } from "../context/AppContext";
 
 function TabsNav() {
-  const { user } = useApp();
+  const { user, cartCount, favorites } = useApp();
+  const isAdmin = user?.role === "admin";
 
   return (
     <Tabs
@@ -23,51 +25,86 @@ function TabsNav() {
       }}
     >
       {/* 1. Home */}
-      <Tabs.Screen 
-        name="index" 
-        options={{ 
+      <Tabs.Screen
+        name="index"
+        options={{
           title: "Home",
           tabBarLabel: "Home",
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} color={color} size={20} /> 
-          ) 
-        }} 
+            <Ionicons name={focused ? "home" : "home-outline"} color={color} size={20} />
+          )
+        }}
       />
 
-      {/* 2. Cart */}
-      <Tabs.Screen 
-        name="cart" 
-        options={{ 
+      {/* หน้ารายละเอียดสินค้า: ไม่โชว์เป็นแท็บ และซ่อนแถบเมนูลอยเพื่อให้แถบสั่งซื้อด้านล่างของหน้านี้ไม่ถูกบัง */}
+      <Tabs.Screen
+        name="product/[id]"
+        options={{
+          href: null,
+          tabBarStyle: { display: "none" },
+        }}
+      />
+
+      {/* Payment flow: open from the cart without adding another bottom tab. */}
+      <Tabs.Screen
+        name="payment"
+        options={{
+          href: null,
+          tabBarStyle: { display: "none" },
+        }}
+      />
+
+      {/* 2. Cart (ซ่อนสำหรับแอดมิน) */}
+      <Tabs.Screen
+        name="cart"
+        options={{
           title: "Cart",
-          tabBarLabel: "Cart", 
+          tabBarLabel: "Cart",
+          href: isAdmin ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "cart" : "cart-outline"} color={color} size={20} /> 
-          ) 
-        }} 
+            <View style={styles.tabIconWrap}>
+              <Ionicons name={focused ? "cart" : "cart-outline"} color={color} size={20} />
+              {cartCount > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{cartCount}</Text>
+                </View>
+              )}
+            </View>
+          )
+        }}
       />
 
-      {/* 3. Add */}
-      <Tabs.Screen 
-        name="add" 
-        options={{ 
+      {/* 3. Add (เฉพาะแอดมิน) */}
+      <Tabs.Screen
+        name="add"
+        options={{
           title: "Add",
-          tabBarLabel: "Add", 
+          tabBarLabel: "Add",
+          href: isAdmin ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "add-circle" : "add-circle-outline"} color={color} size={20} /> 
-          ) 
-        }} 
+            <Ionicons name={focused ? "add-circle" : "add-circle-outline"} color={color} size={20} />
+          )
+        }}
       />
 
-      {/* 4. Favorites */}
-      <Tabs.Screen 
-        name="favorites" 
-        options={{ 
+      {/* 4. Favorites (ซ่อนสำหรับแอดมิน) */}
+      <Tabs.Screen
+        name="favorites"
+        options={{
           title: "Favorites",
-          tabBarLabel: "Favorites", 
+          tabBarLabel: "Favorites",
+          href: isAdmin ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "heart" : "heart-outline"} color={color} size={20} /> 
-          ) 
-        }} 
+            <View style={styles.tabIconWrap}>
+              <Ionicons name={focused ? "heart" : "heart-outline"} color={color} size={20} />
+              {favorites.length > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{favorites.length}</Text>
+                </View>
+              )}
+            </View>
+          )
+        }}
       />
 
       {/* 5. Login */}
@@ -82,28 +119,30 @@ function TabsNav() {
         }} 
       />
 
-      {/* 6. Brand (จากรูปมันโชว์คำว่า brand แสดงว่าชื่อไฟล์/โฟลเดอร์ของคุณต้องสะกดว่า brand แน่ๆ) */}
-      <Tabs.Screen 
-        name="brand"  // 🌟 เปลี่ยนจาก "Tags" กลับมาเป็น "brand" ตัวพิมพ์เล็กให้ตรงกับระบบไฟล์
-        options={{ 
-          title: "Brand",
-          tabBarLabel: "Brand", 
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "pricetag" : "pricetag-outline"} color={color} size={20} /> 
-          ) 
-        }} 
-      />
-
-      {/* 7. Admin (จากรูปมันโชว์คำว่า admin-d... น่าจะเป็น admin-dashboard หรือ dashboard) */}
-      <Tabs.Screen 
-        name="admin-dashboard" // 🌟 ตรงนี้ให้เช็คดูนะคะ ถ้าชื่อไฟล์จริงๆ คือ admin-dashboard ให้เปลี่ยนแก้ตรงนี้เป็น "admin-dashboard" นะคะ
-        options={{ 
+      {/* 6. Admin Dashboard (เฉพาะแอดมิน) */}
+      <Tabs.Screen
+        name="admin-dashboard"
+        options={{
           title: "Admin",
           tabBarLabel: "Admin",
+          href: isAdmin ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "grid" : "grid-outline"} color={color} size={20} />
           )
-        }} 
+        }}
+      />
+
+      {/* 7. Admin Products (เฉพาะแอดมิน) */}
+      <Tabs.Screen
+        name="admin-products"
+        options={{
+          title: "Products",
+          tabBarLabel: "Products",
+          href: isAdmin ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "cube" : "cube-outline"} color={color} size={20} />
+          )
+        }}
       />
     </Tabs>
   );
@@ -111,13 +150,105 @@ function TabsNav() {
 
 export default function RootLayout() {
   return (
-    <AppProvider>
-      <TabsNav />
-    </AppProvider>
+    <SafeAreaProvider>
+      <AppProvider>
+        {Platform.OS === "web" ? (
+          <View style={styles.webViewport}>
+            <View style={styles.phoneFrame}>
+              <View style={styles.phoneSpeaker} />
+              <View style={styles.phoneCamera} />
+              <View pointerEvents="none" style={styles.phoneInnerGlow} />
+              <TabsNav />
+            </View>
+          </View>
+        ) : (
+          <TabsNav />
+        )}
+      </AppProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  webViewport: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111827",
+  },
+  phoneFrame: {
+    width: 390,
+    height: 820,
+    maxWidth: "92%",
+    maxHeight: "92%",
+    overflow: "hidden",
+    backgroundColor: "#F4F7FC",
+    borderWidth: 3,
+    borderColor: "#C89421",
+    borderRadius: 46,
+    shadowColor: "#000",
+    shadowOpacity: 0.55,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 18,
+  },
+  phoneSpeaker: {
+    position: "absolute",
+    zIndex: 20,
+    top: 12,
+    alignSelf: "center",
+    width: 64,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#111827",
+    opacity: 0.85,
+  },
+  phoneCamera: {
+    position: "absolute",
+    zIndex: 20,
+    top: 12,
+    left: "50%",
+    marginLeft: 42,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#273449",
+    borderWidth: 1,
+    borderColor: "#64748B",
+  },
+  phoneInnerGlow: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 19,
+    borderRadius: 43,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.7)",
+  },
+  tabIconWrap: {
+    width: 28,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBadge: {
+    position: "absolute",
+    top: -5,
+    right: -7,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  tabBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: "800",
+  },
   floatingTabBar: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 30 : 20, 

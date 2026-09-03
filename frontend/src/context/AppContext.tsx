@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { showAlert } from "../utils/crossPlatformAlert";
 
@@ -20,10 +20,14 @@ export type Product = {
   price: number;
   oldPrice: number | null;
   rating: number;
+  stock: number;
   category: string;
   image: string;
   isActive: boolean;
 };
+
+// สินค้าที่มีสต็อกเหลือน้อยกว่าหรือเท่ากับจำนวนนี้จะถูกนับว่า "ใกล้หมด"
+export const LOW_STOCK_THRESHOLD = 5;
 
 export type Role = "admin" | "customer";
 
@@ -46,6 +50,13 @@ export type Receipt = {
   total: number;
 };
 
+export type OrderDetails = {
+  recipientName: string;
+  phone: string;
+  deliveryAddress: string;
+  paymentSlip: string;
+};
+
 type AppContextType = {
   user: User | null;
   login: (username: string, password: string, role: Role, rememberMe: boolean) => Promise<void>;
@@ -53,6 +64,7 @@ type AppContextType = {
   logout: () => void;
   products: Product[];
   adminProducts: Product[];
+  lowStockProducts: Product[];
   addProduct: (product: Omit<Product, "id" | "isActive"> & { isActive?: boolean }) => Promise<void>;
   updateProduct: (id: string, productData: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
@@ -64,6 +76,7 @@ type AppContextType = {
   cartTotal: number;
   cartCount: number;
   checkout: () => Receipt | null;
+  placeOrder: (details: OrderDetails) => Promise<Receipt>;
   receipts: Receipt[];
   favorites: string[];
   toggleFavorite: (productId: string) => void;
@@ -118,6 +131,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       price: Number(p.price ?? 0),
       oldPrice: p.oldPrice !== null && p.oldPrice !== undefined ? Number(p.oldPrice) : null,
       rating: p.rating !== null && p.rating !== undefined ? Number(p.rating) : 5,
+      stock: Number(p.stock ?? 0),
       category: String(p.category ?? "General"),
       image: String(p.image ?? ""),
       isActive: p.is_active === 1 || p.is_active === true || p.is_active === "1",
@@ -125,6 +139,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // 🌐 1. ดึงข้อมูลสินค้าสำหรับลูกค้า
+  // 🔎 ดึงสินค้าทั้งหมดจาก GET /api/products มาเก็บใน state `products`
+  // state นี้คือแหล่งข้อมูลที่หน้า index.tsx เอาไปกรองด้วยช่องค้นหา (ดูฟังก์ชัน filteredProducts ที่นั่น)
   const fetchProducts = async () => {
     try {
       const response = await fetch(API_BASE_URL);
@@ -170,6 +186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         price: Number(p.price ?? 0),
         oldPrice: p.oldPrice !== null && p.oldPrice !== undefined ? Number(p.oldPrice) : null,
         rating: p.rating !== null && p.rating !== undefined ? Number(p.rating) : 5,
+        stock: Number(p.stock ?? 0),
         category: String(p.category ?? "General"),
         image: String(p.image ?? ""),
         isActive: p.is_active === 1 || p.is_active === true || p.is_active === "1",
@@ -251,7 +268,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCart([]);
   };
 
-  // ➕ เพิ่มสินค้า
+  // ➕ เพิ่มสินค้า: เรียก POST /api/products (backend/server.js) ซึ่งจะ INSERT ลง database จริง
   const addProduct = async (product: Omit<Product, "id" | "isActive"> & { isActive?: boolean }) => {
     try {
       const payload = {
@@ -288,7 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ✏️ แก้ไขสินค้า
+  // ✏️ แก้ไขสินค้า: เรียก PUT /api/products/:id (backend/server.js) ซึ่งจะ UPDATE แถวใน database จริง
   const updateProduct = async (id: string, productData: Partial<Product>) => {
     try {
       const payload = {
@@ -326,7 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 🔴 ลบสินค้า
+  // 🔴 ลบสินค้า: เรียก DELETE /api/products/:id (backend/server.js) ซึ่งจะ DELETE แถวออกจาก database จริง
   const deleteProduct = async (id: string) => {
     try {
       const targetId = String(id);
@@ -441,12 +458,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return receipt;
   };
 
+  const placeOrder = async (details: OrderDetails): Promise<Receipt> => {
+    if (!authToken || !user) throw new Error("Please log in before placing an order.");
+    if (!cart.length) throw new Error("Your cart is empty.");
+
+    const response = await fetch(`${API_ORIGIN}/api/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        ...details,
+        paymentMethod: "bank_transfer",
+        items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Could not place order (${response.status})`);
+
+    const items = cart.map((item) => {
+      const product = products.find((entry) => String(entry.id) === String(item.productId));
+      return { name: product?.name ?? "Unknown product", price: product?.price ?? 0, quantity: item.quantity };
+    });
+    const receipt: Receipt = {
+      id: String(data.order?.id ?? Date.now()),
+      date: new Date().toLocaleString("th-TH"),
+      items,
+      total: Number(data.order?.total ?? items.reduce((sum, item) => sum + item.price * item.quantity, 0)),
+    };
+    setReceipts((prev) => [receipt, ...prev]);
+    setCart([]);
+    await fetchProducts();
+    return receipt;
+  };
+
   const toggleFavorite = (productId: string) => {
     const idStr = String(productId);
     setFavorites((prev) =>
       prev.includes(idStr) ? prev.filter((f) => f !== idStr) : [...prev, idStr]
     );
   };
+
+  // ⚠️ สินค้าที่ยังเปิดขายอยู่และสต็อกใกล้หมด สำหรับแจ้งเตือนแอดมิน
+  const lowStockProducts = useMemo(
+    () => adminProducts.filter((p) => p.isActive && p.stock <= LOW_STOCK_THRESHOLD),
+    [adminProducts]
+  );
 
   return (
     <AppContext.Provider
@@ -457,6 +515,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         logout,
         products,
         adminProducts,
+        lowStockProducts,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -468,6 +527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         cartTotal,
         cartCount,
         checkout,
+        placeOrder,
         receipts,
         favorites,
         toggleFavorite,

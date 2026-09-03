@@ -89,3 +89,55 @@ export async function uploadImageToGitHub(dataUrl: string, fileName: string): Pr
 
   return downloadUrl;
 }
+
+function extensionFromMime(mime: string): string {
+  if (mime.includes("png")) return ".png";
+  if (mime.includes("webp")) return ".webp";
+  return ".jpg";
+}
+
+function fileNameFromUrl(url: string, mime: string): string {
+  try {
+    const last = new URL(url).pathname.split("/").pop() || "";
+    if (/\.(jpg|jpeg|png|webp)$/i.test(last)) return last;
+  } catch {
+    // ignore malformed URL, fall through to the mime-based name below
+  }
+  return `image${extensionFromMime(mime)}`;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the downloaded image."));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * If `url` already points at this repo's GitHub-hosted product images, it is returned
+ * unchanged (avoids re-uploading the same image every time a product is saved again).
+ * Otherwise the image at `url` is downloaded and re-uploaded to GitHub via
+ * uploadImageToGitHub, returning the new raw.githubusercontent.com URL.
+ */
+export async function mirrorImageUrlToGitHub(url: string): Promise<string> {
+  const { owner, repo } = getGitHubConfig();
+  const alreadyHosted = new RegExp(`^https://raw\\.githubusercontent\\.com/${owner}/${repo}/`, "i");
+  if (alreadyHosted.test(url)) return url;
+
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new Error("Could not download the image from that URL. Please check the link and try again.");
+  }
+  if (!response.ok) {
+    throw new Error(`Could not download the image from that URL (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const dataUrl = await blobToDataUrl(blob);
+  const fileName = fileNameFromUrl(url, blob.type || "image/jpeg");
+  return uploadImageToGitHub(dataUrl, fileName);
+}

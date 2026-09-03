@@ -46,10 +46,10 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-const productColumns = 'id, created_at, name, brand, category, price, oldPrice, rating, image, is_active';
+const productColumns = 'id, created_at, name, brand, category, price, oldPrice, rating, stock, image, is_active';
 
 function productPayload(body) {
-  const { name, brand, category, image, price, oldPrice, old_price, rating, is_active } = body;
+  const { name, brand, category, image, price, oldPrice, old_price, rating, stock, is_active } = body;
   return {
     ...(name !== undefined && { name }),
     ...(brand !== undefined && { brand }),
@@ -60,6 +60,7 @@ function productPayload(body) {
       oldPrice: oldPrice ?? old_price ?? null,
     }),
     ...(rating !== undefined && { rating: Number(rating) || 5 }),
+    ...(stock !== undefined && { stock: Number(stock) || 0 }),
     ...(is_active !== undefined && { is_active: Number(Boolean(is_active)) }),
   };
 }
@@ -146,6 +147,10 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// 🔎 ดึงสินค้าที่เปิดขายทั้งหมดจาก database มาให้ frontend
+// (คำค้นหาที่ผู้ใช้พิมพ์ใน search bar ไม่ได้ถูกส่งมากรองที่ SQL ตรงนี้ —
+// frontend ดึงสินค้าทั้งหมดมาเก็บไว้ก่อน แล้วค่อยกรองด้วย JavaScript ฝั่ง client
+// ดูส่วนกรองค้นหาจริงที่ frontend/src/app/index.tsx ฟังก์ชัน filteredProducts)
 app.get('/api/products', async (req, res) => {
   try {
     const [rows] = await pool.execute(
@@ -154,6 +159,64 @@ app.get('/api/products', async (req, res) => {
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/orders', authenticate, async (req, res) => {
+  const { recipientName, phone, deliveryAddress, paymentMethod, paymentSlip, items } = req.body;
+  if (!recipientName?.trim() || !phone?.trim() || !deliveryAddress?.trim() || paymentMethod !== 'bank_transfer' || !paymentSlip || !Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'Recipient, delivery address, payment method, slip, and items are required' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const orderItems = [];
+
+    for (const item of items) {
+      const productId = Number(item.productId);
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(productId) || !Number.isInteger(quantity) || quantity <= 0) {
+        throw Object.assign(new Error('Invalid order item'), { statusCode: 400 });
+      }
+
+      const [rows] = await connection.execute(
+        'SELECT id, price, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE',
+        [productId]
+      );
+      const product = rows[0];
+      if (!product) throw Object.assign(new Error('Product is no longer available'), { statusCode: 409 });
+      if (product.stock < quantity) throw Object.assign(new Error(`Not enough stock for product ${productId}`), { statusCode: 409 });
+
+      orderItems.push({ productId, quantity, unitPrice: Number(product.price) });
+    }
+
+    const total = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const [orderResult] = await connection.execute(
+      `INSERT INTO orders
+        (user_id, recipient_name, phone, delivery_address, total_amount, payment_method, payment_slip)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [req.auth.userId, recipientName.trim(), phone.trim(), deliveryAddress.trim(), total, paymentMethod, paymentSlip]
+    );
+
+    for (const item of orderItems) {
+      await connection.execute(
+        'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)',
+        [orderResult.insertId, item.productId, item.quantity, item.unitPrice]
+      );
+      await connection.execute(
+        'UPDATE products SET stock = stock - ? WHERE id = ?',
+        [item.quantity, item.productId]
+      );
+    }
+
+    await connection.commit();
+    res.status(201).json({ order: { id: String(orderResult.insertId), status: 'pending_verification', total }, message: 'Order submitted successfully' });
+  } catch (err) {
+    await connection.rollback();
+    res.status(err.statusCode || 500).json({ error: err.message });
+  } finally {
+    connection.release();
   }
 });
 
@@ -169,6 +232,7 @@ app.get('/api/admin/products', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// ➕ เพิ่มสินค้า: รับข้อมูลจาก frontend แล้ว INSERT แถวใหม่ลงตาราง products
 app.post('/api/products', authenticate, requireAdmin, async (req, res) => {
   try {
     const payload = productPayload(req.body);
@@ -184,6 +248,7 @@ app.post('/api/products', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// ✏️ แก้ไขสินค้า: UPDATE แถวที่มี id ตรงกับ req.params.id ด้วยฟิลด์ที่ส่งมา (ชื่อ, ราคา, สต็อก, รูป ฯลฯ)
 app.put('/api/products/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const payload = productPayload(req.body);
@@ -199,7 +264,7 @@ app.put('/api/products/:id', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
+//ฟังชัน ของ actice inactive
 app.patch('/api/products/:id/status', authenticate, requireAdmin, async (req, res) => {
   try {
     if (typeof req.body.is_active !== 'boolean' && req.body.is_active !== 0 && req.body.is_active !== 1) {
@@ -217,6 +282,7 @@ app.patch('/api/products/:id/status', authenticate, requireAdmin, async (req, re
   }
 });
 
+// 🗑️ ลบสินค้า: DELETE แถวที่มี id ตรงกับ req.params.id ออกจากตาราง products ถาวร
 app.delete('/api/products/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const [result] = await pool.execute('DELETE FROM products WHERE id = ?', [req.params.id]);
