@@ -122,6 +122,10 @@ export default function Index() {
                 <AnimatedPressable style={styles.manageBtn} onPress={() => router.push("/admin-products")}>
                   <Text style={styles.dashboardBtnText}>Manage ⚙️</Text>
                 </AnimatedPressable>
+                {/* 📊 ปุ่มไปหน้ารายงานการจัดกลุ่มราคาสินค้า (K-Means) */}
+                <AnimatedPressable style={styles.clustersBtn} onPress={() => router.push("/admin-clusters")}>
+                  <Text style={styles.dashboardBtnText}>Clusters 📈</Text>
+                </AnimatedPressable>
               </View>
             )}
           </View>
@@ -350,6 +354,7 @@ const styles = StyleSheet.create({
   userHello: { fontSize: 12, color: "#5B6B85" },
   dashboardBtn: { backgroundColor: "#1B3A66", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   manageBtn: { backgroundColor: "#2563EB", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  clustersBtn: { backgroundColor: "#7C3AED", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   dashboardBtnText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   iconButton: { position: "relative", padding: 4 },
   badge: { position: "absolute", top: -2, right: -2, backgroundColor: "#2563EB", borderRadius: 10, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center" },

@@ -144,6 +144,16 @@ function TabsNav() {
           )
         }}
       />
+
+      {/* รายงานการจัดกลุ่มราคา (K-Means): เปิดจากปุ่ม "Clusters" บนหน้า Home เท่านั้น
+          ไม่โชว์เป็นแท็บ (ทั้งฝั่งแอดมินและลูกค้า) และซ่อนแถบเมนูลอยไม่ให้บังเนื้อหาด้านล่าง */}
+      <Tabs.Screen
+        name="admin-clusters"
+        options={{
+          href: null,
+          tabBarStyle: { display: "none" },
+        }}
+      />
     </Tabs>
   );
 }

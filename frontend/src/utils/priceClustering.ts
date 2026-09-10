@@ -125,3 +125,111 @@ export const PRICE_TIER_ICONS: Record<PriceTier, ComponentProps<typeof Ionicons>
   mid: "options-outline",
   expensive: "diamond-outline",
 };
+
+// ===== รายงานการจัดกลุ่มสำหรับหน้าแอดมิน (/admin-clusters): รองรับ k ใดก็ได้ (ไม่ใช่แค่ 3) =====
+// ใช้หลักการเดียวกับ exactOptimalCutPoints ด้านบน แต่ทำเป็น dynamic programming ทั่วไป (O(k·n²))
+// เพื่อคำนวณทั้งเส้น inertia ของทุกค่า k (สำหรับกราฟ Elbow Method) และ assignment ที่ optimal จริง
+// สำหรับ k ที่เลือก ในการรันครั้งเดียว
+export type KMeansPriceReport = {
+  /** inertiaByK[i] คือค่า inertia (within-cluster SSE ต่ำสุดที่เป็นไปได้) เมื่อใช้ i+1 กลุ่ม */
+  inertiaByK: number[];
+  /** ค่า k ที่ elbow method แนะนำ (จุดที่ห่างจากเส้นตรงระหว่างจุดแรก-จุดสุดท้ายมากที่สุด) */
+  elbowK: number;
+  /** คืน cluster index (0 = ราคาต่ำสุด ... k-1 = ราคาสูงสุด) เรียงตามลำดับสินค้าที่ส่งเข้ามาตอนแรก */
+  assignmentsForK: (k: number) => number[];
+};
+
+function findElbowK(inertias: number[]): number {
+  const maxK = inertias.length;
+  if (maxK <= 2) return maxK || 1;
+
+  // ปรับสเกลแกน x (จำนวน k) และแกน y (inertia) ให้อยู่ในช่วง 0–1 ทั้งคู่ก่อน
+  // เพราะสองแกนนี้หน่วยต่างกันมาก การหาระยะห่างจากเส้นตรงตรงๆ จะเอนเอียงไปทางแกนที่ตัวเลขใหญ่กว่า
+  const minY = Math.min(...inertias);
+  const maxY = Math.max(...inertias);
+  const rangeY = maxY - minY || 1;
+  const points = inertias.map((y, idx) => ({ x: idx / (maxK - 1), y: (y - minY) / rangeY }));
+  const { x: x1, y: y1 } = points[0];
+  const { x: x2, y: y2 } = points[points.length - 1];
+  const denom = Math.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2) || 1;
+
+  let bestK = 1;
+  let bestDistance = -1;
+  points.forEach((p, idx) => {
+    const distance = Math.abs((y2 - y1) * p.x - (x2 - x1) * p.y + x2 * y1 - y2 * x1) / denom;
+    if (distance > bestDistance) {
+      bestDistance = distance;
+      bestK = idx + 1;
+    }
+  });
+  return bestK;
+}
+
+export function analyzePricesWithKMeans(prices: number[], maxK: number): KMeansPriceReport {
+  const n = prices.length;
+  if (n === 0) {
+    return { inertiaByK: [], elbowK: 1, assignmentsForK: () => [] };
+  }
+
+  const order = prices.map((price, index) => ({ price, index })).sort((a, b) => a.price - b.price);
+  const sorted = order.map((o) => o.price);
+
+  const prefixSum = new Array(n + 1).fill(0);
+  const prefixSumSq = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) {
+    prefixSum[i + 1] = prefixSum[i] + sorted[i];
+    prefixSumSq[i + 1] = prefixSumSq[i] + sorted[i] * sorted[i];
+  }
+  const segmentCost = (l: number, r: number) => {
+    const count = r - l;
+    if (count <= 0) return 0;
+    const sum = prefixSum[r] - prefixSum[l];
+    const sumSq = prefixSumSq[r] - prefixSumSq[l];
+    return sumSq - (sum * sum) / count;
+  };
+
+  const cappedMaxK = Math.max(1, Math.min(maxK, n));
+  // dp[k][i] = ต้นทุนต่ำสุดของการแบ่งสินค้า i ตัวแรก (ที่เรียงราคาแล้ว) ออกเป็น k กลุ่ม
+  // prev[k][i] = ตำแหน่งจุดตัดที่ทำให้ได้ต้นทุนต่ำสุดนั้น (ไว้ backtrack หาขอบเขตกลุ่มจริง)
+  const dp: number[][] = Array.from({ length: cappedMaxK + 1 }, () => new Array(n + 1).fill(Infinity));
+  const prev: number[][] = Array.from({ length: cappedMaxK + 1 }, () => new Array(n + 1).fill(0));
+  dp[0][0] = 0;
+  for (let k = 1; k <= cappedMaxK; k++) {
+    for (let i = k; i <= n; i++) {
+      for (let j = k - 1; j < i; j++) {
+        if (dp[k - 1][j] === Infinity) continue;
+        const cost = dp[k - 1][j] + segmentCost(j, i);
+        if (cost < dp[k][i]) {
+          dp[k][i] = cost;
+          prev[k][i] = j;
+        }
+      }
+    }
+  }
+
+  const inertiaByK: number[] = [];
+  for (let k = 1; k <= cappedMaxK; k++) inertiaByK.push(dp[k][n]);
+
+  const assignmentsForK = (requestedK: number): number[] => {
+    const k = Math.max(1, Math.min(requestedK, cappedMaxK));
+    const cuts: number[] = [];
+    let i = n;
+    let remaining = k;
+    while (remaining > 0) {
+      cuts.unshift(i);
+      i = prev[remaining][i];
+      remaining--;
+    }
+    const boundaries = [0, ...cuts];
+    const clusterByOriginalIndex = new Array(n).fill(0);
+    // segment 0 มีราคาต่ำสุดเสมอเพราะ `order` เรียงจากน้อยไปมาก จึงไม่ต้อง sort cluster ตาม mean ซ้ำ
+    for (let segment = 0; segment < k; segment++) {
+      for (let pos = boundaries[segment]; pos < boundaries[segment + 1]; pos++) {
+        clusterByOriginalIndex[order[pos].index] = segment;
+      }
+    }
+    return clusterByOriginalIndex;
+  };
+
+  return { inertiaByK, elbowK: findElbowK(inertiaByK), assignmentsForK };
+}
