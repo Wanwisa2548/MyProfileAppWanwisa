@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
     Animated,
     Image,
@@ -14,24 +15,40 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AnimatedPressable } from "../components/AnimatedPressable";
 import { useApp } from "../context/AppContext";
+import { PRICE_TIER_COLORS, PRICE_TIER_ICONS, PRICE_TIER_LABELS, PriceTier, withPriceTiers } from "../utils/priceClustering";
 
 const CATEGORIES = ["All", "Power Strips", "Smart Plugs", "Adapters"];
+const PRICE_TIER_FILTERS: ("All" | PriceTier)[] = ["All", "cheap", "mid", "expensive"];
 
 export default function Index() {
   const { products, cart, addToCart, updateQuantity, cartCount, favorites, toggleFavorite, user } = useApp();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [activePriceTier, setActivePriceTier] = useState<"All" | PriceTier>("All");
   const [menuOpen, setMenuOpen] = useState(false);
   const [language, setLanguage] = useState<"en" | "th">("en");
   const [darkMode, setDarkMode] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const isAdmin = user?.role === "admin";
   const text = language === "th"
-    ? { search: "ค้นหาปลั๊กไฟและอุปกรณ์อัจฉริยะ...", all: "ทั้งหมด", powerStrips: "ปลั๊กพ่วง", smartPlugs: "ปลั๊กอัจฉริยะ", adapters: "อะแดปเตอร์", add: "เพิ่มลงรถเข็น", menu: "เมนู", language: "ภาษา", appearance: "รูปแบบการแสดงผล", light: "สว่าง", dark: "มืด" }
-    : { search: "Find power outlets, smart plugs...", all: "All", powerStrips: "Power Strips", smartPlugs: "Smart Plugs", adapters: "Adapters", add: "Add to cart", menu: "Menu", language: "Language", appearance: "Appearance", light: "Light", dark: "Dark" };
+    ? { search: "ค้นหาปลั๊กไฟและอุปกรณ์อัจฉริยะ...", all: "ทั้งหมด", powerStrips: "ปลั๊กพ่วง", smartPlugs: "ปลั๊กอัจฉริยะ", adapters: "อะแดปเตอร์", add: "เพิ่มลงรถเข็น", menu: "เมนู", language: "ภาษา", appearance: "รูปแบบการแสดงผล", light: "สว่าง", dark: "มืด", priceGroups: "จัดกลุ่มราคา (K-Means)" }
+    : { search: "Find power outlets, smart plugs...", all: "All", powerStrips: "Power Strips", smartPlugs: "Smart Plugs", adapters: "Adapters", add: "Add to cart", menu: "Menu", language: "Language", appearance: "Appearance", light: "Light", dark: "Dark", priceGroups: "Price groups (K-Means)" };
   const categories = [text.all, text.powerStrips, text.smartPlugs, text.adapters];
   const categoryValues = CATEGORIES;
+
+  // 🏷️ จัดกลุ่มสินค้าตามราคาเป็น 3 ระดับ: ถูก/กลาง/แพง — ใช้ผลจาก analysis/clustering.py
+  // (scikit-learn K-Means ที่บันทึกไว้ใน database) ถ้ามีครบ ไม่งั้นคำนวณสดด้วย exact k-means แทน
+  // คำนวณจากสินค้า "ทั้งหมด" (ไม่ใช่ที่กรองแล้ว) เพื่อให้ระดับราคาคงที่ไม่ขึ้นกับตัวกรอง/คำค้นหา
+  // (ต้องอยู่ก่อน `if (!user) return` เสมอ — hook ทุกตัวต้องถูกเรียกทุก render ไม่งั้น React จะ error
+  // "Rendered more hooks than during the previous render" ตอนสลับสถานะ login)
+  const productsWithTier = useMemo(() => withPriceTiers(products), [products]);
+
+  const tierCounts = useMemo(() => {
+    const counts: Record<PriceTier, number> = { cheap: 0, mid: 0, expensive: 0 };
+    productsWithTier.forEach((p) => counts[p.priceTier]++);
+    return counts;
+  }, [productsWithTier]);
 
   if (!user) {
     return (
@@ -46,18 +63,19 @@ export default function Index() {
     );
   }
 
-  // 🔎 ค้นหาสินค้า: กรองจาก `products` (ที่ AppContext ดึงมาจาก database ผ่าน GET /api/products)
+  // 🔎 ค้นหาสินค้า: กรองจาก `productsWithTier` (ที่ AppContext ดึงมาจาก database ผ่าน GET /api/products)
   // ด้วย JavaScript ฝั่ง client — ไม่ได้ยิง query ไป database ใหม่ทุกครั้งที่พิมพ์
   // เทียบข้อความค้นหา (search) กับชื่อ, แบรนด์, และราคาของสินค้าแบบ case-insensitive
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = productsWithTier.filter((p) => {
     const matchesCategory = activeCategory === "All" || p.category === activeCategory;
+    const matchesPriceTier = activePriceTier === "All" || p.priceTier === activePriceTier;
     const q = search.trim().toLowerCase();
     const matchesSearch =
       q === "" ||
       p.name.toLowerCase().includes(q) ||
       p.brand.toLowerCase().includes(q) ||
       p.price.toString().includes(q);
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesPriceTier && matchesSearch;
   });
 
   const formatPrice = (n: number) => `฿${n.toLocaleString()}`;
@@ -179,6 +197,41 @@ export default function Index() {
         </ScrollView>
       </View>
 
+      {/* 🏷️ ตัวกรองระดับราคา (จาก K-Means): ถูก / กลาง / แพง */}
+      <View style={styles.tierFilterContainer}>
+        <Text style={[styles.tierFilterLabel, darkMode && styles.darkSecondaryText]}>{text.priceGroups}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, alignItems: "center" }}>
+          {PRICE_TIER_FILTERS.map((tier) => {
+            const isActive = activePriceTier === tier;
+            const isAll = tier === "All";
+            const color = isAll ? null : PRICE_TIER_COLORS[tier];
+            const count = isAll ? productsWithTier.length : tierCounts[tier];
+            return (
+              <AnimatedPressable
+                key={tier}
+                style={[
+                  styles.tierChip,
+                  darkMode && styles.darkElement,
+                  isActive && (isAll ? styles.tierChipActiveNeutral : { backgroundColor: color!.bg, borderColor: color!.border }),
+                ]}
+                onPress={() => setActivePriceTier(tier)}
+              >
+                {!isAll && <Ionicons name={PRICE_TIER_ICONS[tier]} size={13} color={isActive ? color!.text : "#8A97AC"} />}
+                <Text
+                  style={[
+                    styles.tierChipText,
+                    darkMode && styles.darkSecondaryText,
+                    isActive && { color: isAll ? "#0F1E33" : color!.text, fontWeight: "800" },
+                  ]}
+                >
+                  {isAll ? text.all : PRICE_TIER_LABELS[language][tier]} ({count})
+                </Text>
+              </AnimatedPressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {/* Product Grid */}
       <Animated.ScrollView
         style={styles.productContainer}
@@ -205,10 +258,21 @@ export default function Index() {
                 <View style={styles.imageWrapper}>
                   <Image source={{ uri: p.image }} style={styles.image} resizeMode="contain" />
 
+                  {/* 🏷️ ริบบิ้นระดับราคา (K-Means) ลอยอยู่มุมซ้ายบนของรูป */}
+                  <View
+                    style={[
+                      styles.tierRibbon,
+                      { backgroundColor: PRICE_TIER_COLORS[p.priceTier].text },
+                    ]}
+                  >
+                    <Ionicons name={PRICE_TIER_ICONS[p.priceTier]} size={10} color="#fff" />
+                    <Text style={styles.tierRibbonText}>{PRICE_TIER_LABELS[language][p.priceTier]}</Text>
+                  </View>
+
                   {/* ปุ่ม Favorite (เฉพาะลูกค้า แอดมินไม่ต้องมี) */}
                   {!isAdmin && (
                     <AnimatedPressable style={styles.favoriteButton} onPress={() => toggleFavorite(p.id)}>
-                      <Ionicons name={isFav ? "heart" : "heart-outline"} size={18} color={isFav ? "#DC2626" : "#5B6B85"} />
+                      <Ionicons name={isFav ? "heart" : "heart-outline"} size={17} color={isFav ? "#DC2626" : "#5B6B85"} />
                     </AnimatedPressable>
                   )}
 
@@ -221,13 +285,16 @@ export default function Index() {
 
                 <Text style={[styles.brand, darkMode && styles.darkSecondaryText]}>{p.brand}</Text>
                 <Text style={[styles.productName, darkMode && styles.darkText]} numberOfLines={1}>{p.name}</Text>
-                <View style={styles.ratingRow}>
-                  <Ionicons name="star" size={12} color="#eab308" />
-                  <Text style={[styles.ratingText, darkMode && styles.darkSecondaryText]}>{p.rating}</Text>
-                </View>
-                <View style={styles.priceRow}>
-                  <Text style={styles.price}>{formatPrice(p.price)}</Text>
-                  {p.oldPrice && <Text style={styles.oldPrice}>{formatPrice(p.oldPrice)}</Text>}
+
+                <View style={styles.metaRow}>
+                  <View style={styles.ratingPill}>
+                    <Ionicons name="star" size={11} color="#eab308" />
+                    <Text style={[styles.ratingText, darkMode && styles.darkSecondaryText]}>{p.rating}</Text>
+                  </View>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.price}>{formatPrice(p.price)}</Text>
+                    {p.oldPrice && <Text style={styles.oldPrice}>{formatPrice(p.oldPrice)}</Text>}
+                  </View>
                 </View>
 
                 {isAdmin ? (
@@ -236,9 +303,16 @@ export default function Index() {
                     <Text style={styles.editButtonText}>Edit product</Text>
                   </AnimatedPressable>
                 ) : qty === 0 ? (
-                  <AnimatedPressable style={styles.addButton} onPress={() => addToCart(p.id)}>
-                    <Ionicons name="add" size={16} color="#fff" />
-                    <Text style={styles.addButtonText}>{text.add}</Text>
+                  <AnimatedPressable style={styles.addButtonWrap} onPress={() => addToCart(p.id)}>
+                    <LinearGradient
+                      colors={["#38BDF8", "#2563EB"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.addButton}
+                    >
+                      <Ionicons name="add" size={16} color="#fff" />
+                      <Text style={styles.addButtonText}>{text.add}</Text>
+                    </LinearGradient>
                   </AnimatedPressable>
                 ) : (
                   <View style={styles.stepper}>
@@ -299,26 +373,87 @@ const styles = StyleSheet.create({
   categoryChipActive: { backgroundColor: "#38BDF8", borderColor: "#38BDF8" },
   categoryText: { color: "#5B6B85", fontSize: 14, fontWeight: "600" },
   categoryTextActive: { color: "#fff", fontWeight: "700" },
+  tierFilterContainer: { marginTop: 10 },
+  tierFilterLabel: { fontSize: 11, fontWeight: "700", color: "#8A97AC", textTransform: "uppercase", letterSpacing: 0.5, marginLeft: 16, marginBottom: 6 },
+  tierChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#fff", marginRight: 8, borderWidth: 1, borderColor: "#E2E9F5" },
+  tierChipActiveNeutral: { backgroundColor: "#EAF1FB", borderColor: "#38BDF8" },
+  tierChipText: { color: "#5B6B85", fontSize: 12, fontWeight: "600" },
   productContainer: { flex: 1, marginTop: 10, paddingHorizontal: 12 },
-  productGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8, paddingBottom: 120 },
-  card: { width: "48%", backgroundColor: "#fff", borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#EAF1FB" },
-  imageWrapper: { position: "relative", backgroundColor: "#F4F7FC", borderRadius: 12, padding: 8, overflow: "hidden" },
-  image: { width: "100%", height: 160, borderRadius: 8 },
-  favoriteButton: { position: "absolute", top: 8, right: 8, backgroundColor: "#fff", borderRadius: 16, padding: 6 },
-  discountTag: { position: "absolute", bottom: 8, left: 8, backgroundColor: "#DC2626", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
+  productGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 14, paddingBottom: 120 },
+  card: {
+    width: "48%",
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#F0F4FB",
+    shadowColor: "#0F1E33",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  imageWrapper: { position: "relative", backgroundColor: "#F4F7FC", borderRadius: 14, padding: 10, overflow: "hidden" },
+  image: { width: "100%", aspectRatio: 1.15, borderRadius: 10 },
+  tierRibbon: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    shadowColor: "#0F1E33",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  tierRibbonText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  favoriteButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 6,
+    shadowColor: "#0F1E33",
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  discountTag: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    backgroundColor: "#DC2626",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    shadowColor: "#DC2626",
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
   discountText: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  brand: { fontSize: 11, color: "#8A97AC", textTransform: "uppercase", fontWeight: "600", marginTop: 8 },
+  brand: { fontSize: 10, color: "#8A97AC", textTransform: "uppercase", fontWeight: "700", letterSpacing: 0.3, marginTop: 8 },
   productName: { fontSize: 14, fontWeight: "700", color: "#0F1E33", marginTop: 2 },
-  ratingRow: { flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 },
-  ratingText: { fontSize: 12, color: "#5B6B85", fontWeight: "500" },
-  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 6 },
-  price: { color: "#2563EB", fontWeight: "800", fontSize: 16 },
-  oldPrice: { color: "#E2E9F5", fontSize: 12, textDecorationLine: "line-through" },
-  addButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#2563EB", borderRadius: 10, paddingVertical: 10, marginTop: 12, gap: 4 },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 },
+  ratingPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF9E7", borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  ratingText: { fontSize: 11, color: "#B45309", fontWeight: "700" },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 5 },
+  price: { color: "#2563EB", fontWeight: "800", fontSize: 15 },
+  oldPrice: { color: "#C3CEE0", fontSize: 11, textDecorationLine: "line-through" },
+  addButtonWrap: { borderRadius: 12, marginTop: 10, shadowColor: "#2563EB", shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  addButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, paddingVertical: 10, gap: 4 },
   addButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  editButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#D97706", borderRadius: 10, paddingVertical: 10, marginTop: 12, gap: 4 },
+  editButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#D97706", borderRadius: 12, paddingVertical: 10, marginTop: 10, gap: 4 },
   editButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#EAF1FB", borderRadius: 10, marginTop: 12, paddingVertical: 4, paddingHorizontal: 4 },
+  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#EAF1FB", borderRadius: 12, marginTop: 10, paddingVertical: 4, paddingHorizontal: 4 },
   stepperBtn: { padding: 6, backgroundColor: "#fff", borderRadius: 8 },
   stepperQty: { color: "#1D4ED8", fontWeight: "800", fontSize: 14 },
   emptyState: { width: "100%", alignItems: "center", justifyContent: "center", marginTop: 80 },

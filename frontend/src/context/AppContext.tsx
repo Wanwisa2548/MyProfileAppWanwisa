@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { showAlert } from "../utils/crossPlatformAlert";
+import { isPriceTier, PriceTier } from "../utils/priceClustering";
 
 // 🌐 ใช้ค่า API Base URL จาก environment ของ Expo ถ้ามี
 const DEFAULT_API_ORIGIN = "http://119.59.102.161:3038";
@@ -18,6 +19,7 @@ export type Product = {
   name: string;
   brand: string;
   price: number;
+  priceTier: PriceTier | null;
   oldPrice: number | null;
   rating: number;
   stock: number;
@@ -129,6 +131,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name: String(p.name ?? ""),
       brand: String(p.brand ?? ""),
       price: Number(p.price ?? 0),
+      priceTier: isPriceTier(p.price_tier) ? p.price_tier : null,
       oldPrice: p.oldPrice !== null && p.oldPrice !== undefined ? Number(p.oldPrice) : null,
       rating: p.rating !== null && p.rating !== undefined ? Number(p.rating) : 5,
       stock: Number(p.stock ?? 0),
@@ -184,6 +187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         name: String(p.name ?? ""),
         brand: String(p.brand ?? ""),
         price: Number(p.price ?? 0),
+        priceTier: isPriceTier(p.price_tier) ? p.price_tier : null,
         oldPrice: p.oldPrice !== null && p.oldPrice !== undefined ? Number(p.oldPrice) : null,
         rating: p.rating !== null && p.rating !== undefined ? Number(p.rating) : 5,
         stock: Number(p.stock ?? 0),

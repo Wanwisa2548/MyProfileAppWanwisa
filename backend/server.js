@@ -46,7 +46,8 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-const productColumns = 'id, created_at, name, brand, category, price, oldPrice, rating, stock, image, is_active';
+const productColumns = 'id, created_at, name, brand, category, price, price_tier, oldPrice, rating, stock, image, is_active';
+const VALID_PRICE_TIERS = ['cheap', 'mid', 'expensive'];
 
 function productPayload(body) {
   const { name, brand, category, image, price, oldPrice, old_price, rating, stock, is_active } = body;
@@ -279,6 +280,35 @@ app.patch('/api/products/:id/status', authenticate, requireAdmin, async (req, re
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// 🏷️ บันทึกผลจัดกลุ่มราคา (K-Means) ที่คำนวณจาก analysis/clustering.py กลับลง database
+// รับ [{ id, priceTier }] เป็นชุด แล้ว UPDATE ทีละแถวใน transaction เดียว
+app.patch('/api/admin/products/price-tiers', authenticate, requireAdmin, async (req, res) => {
+  const { tiers } = req.body;
+  if (!Array.isArray(tiers) || !tiers.length) {
+    return res.status(400).json({ error: 'tiers must be a non-empty array of { id, priceTier }' });
+  }
+  for (const entry of tiers) {
+    if (!entry || !VALID_PRICE_TIERS.includes(entry.priceTier)) {
+      return res.status(400).json({ error: `priceTier must be one of ${VALID_PRICE_TIERS.join(', ')}` });
+    }
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const { id, priceTier } of tiers) {
+      await connection.execute('UPDATE products SET price_tier = ? WHERE id = ?', [priceTier, id]);
+    }
+    await connection.commit();
+    res.json({ message: `Updated price tier for ${tiers.length} product(s)` });
+  } catch (err) {
+    await connection.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
   }
 });
 

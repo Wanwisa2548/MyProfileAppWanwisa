@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AnimatedPressable } from "../../components/AnimatedPressable";
 import { LOW_STOCK_THRESHOLD, useApp } from "../../context/AppContext";
 import { showAlert } from "../../utils/crossPlatformAlert";
+import { PRICE_TIER_COLORS, PRICE_TIER_ICONS, PRICE_TIER_LABELS, withPriceTiers } from "../../utils/priceClustering";
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,6 +46,10 @@ export default function ProductDetail() {
   const [deleting, setDeleting] = useState(false);
 
   const product = (isAdmin ? adminProducts : products).find((p) => p.id === String(id));
+
+  // 🏷️ ระดับราคาของสินค้าชิ้นนี้ (ถูก/กลาง/แพง) — ใช้ผลจาก analysis/clustering.py ถ้ามี ไม่งั้นคำนวณสด
+  const productsWithTier = useMemo(() => withPriceTiers(isAdmin ? adminProducts : products), [isAdmin, adminProducts, products]);
+  const priceTier = productsWithTier.find((p) => p.id === String(id))?.priceTier ?? "mid";
 
   if (!product) {
     return (
@@ -137,6 +142,12 @@ export default function ProductDetail() {
             <Text style={styles.ratingText}>{product.rating.toFixed(1)}</Text>
             <View style={styles.categoryPill}>
               <Text style={styles.categoryPillText}>{product.category}</Text>
+            </View>
+            <View style={[styles.tierBadge, { backgroundColor: PRICE_TIER_COLORS[priceTier].bg, borderColor: PRICE_TIER_COLORS[priceTier].border }]}>
+              <Ionicons name={PRICE_TIER_ICONS[priceTier]} size={12} color={PRICE_TIER_COLORS[priceTier].text} />
+              <Text style={[styles.tierBadgeText, { color: PRICE_TIER_COLORS[priceTier].text }]}>
+                {PRICE_TIER_LABELS.en[priceTier]}
+              </Text>
             </View>
           </View>
 
@@ -312,6 +323,8 @@ const styles = StyleSheet.create({
   ratingText: { fontSize: 13, color: "#5B6B85", fontWeight: "700" },
   categoryPill: { backgroundColor: "#EAF1FB", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginLeft: 6 },
   categoryPillText: { fontSize: 11, color: "#1D4ED8", fontWeight: "700" },
+  tierBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 3, marginLeft: 6 },
+  tierBadgeText: { fontSize: 11, fontWeight: "800" },
   priceRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 14 },
   price: { fontSize: 28, fontWeight: "900", color: "#2563EB" },
   oldPrice: { fontSize: 15, color: "#8A97AC", textDecorationLine: "line-through" },
